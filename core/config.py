@@ -4,7 +4,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ── Versão ──────────────────────────────────────────────────────
-APP_VERSION = "v2.0.0"   # ◄ MUDE AQUI para atualizar a versão
+APP_VERSION = "v2.0.1"   # ◄ MUDE AQUI para atualizar a versão
 
 # ── GitHub / Updater ────────────────────────────────────────────
 GITHUB_USER  = "KaueFSS"
