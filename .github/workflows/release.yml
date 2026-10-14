@@ -1,0 +1,94 @@
+# Gera o executável e o instalador do Kyra Tube e publica a release quando
+# uma tag de versão (v3.1.0) é enviada — normalmente por `python scripts/release.py 3.1.0`.
+# O app instalado lê a última release e oferece a atualização sozinho.
+name: Publicar versão
+
+on:
+  push:
+    tags: ["v*"]
+  # Recompila uma versão que já existe e troca os arquivos dela na release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release a recompilar, por exemplo v3.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: python -m pip install -r requirements-dev.txt
+
+      - name: Testes
+        run: python -m pytest -q
+
+      - name: A tag e a versão do código precisam ser a mesma
+        shell: bash
+        run: |
+          code="$(python -c "from core.config import APP_VERSION; print(APP_VERSION)")"
+          if [ "v$code" != "$TAG" ]; then
+            echo "A tag é $TAG, mas core/config.py diz v$code. Use scripts/release.py." >&2
+            exit 1
+          fi
+
+      - name: Notas da versão (mensagem da tag)
+        id: notes
+        shell: bash
+        run: |
+          git fetch --tags --force
+          body="$(git tag -l --format='%(contents)' "$TAG")"
+          # Uma linha "[pre-release]" publica como pré-lançamento (dá para testar, o app não oferece).
+          if printf '%s\n' "$body" | grep -q '^\[pre-release\]'; then echo "pre=--prerelease" >> "$GITHUB_OUTPUT"; else echo "pre=" >> "$GITHUB_OUTPUT"; fi
+          printf '%s\n' "$body" | grep -v '^\[pre-release\]' > notes.txt || true
+
+      - name: Gerar o executável
+        run: >
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name KyraTube
+          --icon assets/kyra-tube.ico --add-data "assets;assets"
+          --collect-all customtkinter --collect-all imageio_ffmpeg --collect-all yt_dlp main.py
+
+      - name: O executável abre (teste de fumaça)
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\KyraTube\KyraTube.exe -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { throw "O Kyra Tube fechou sozinho ao abrir (código $($p.ExitCode))." }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Gerar o instalador
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup 6\ISCC.exe", "C:\Program Files\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress; $iscc = Get-Item "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          $version = $env:TAG.TrimStart("v")
+          & $iscc.FullName "/DAppVersion=$version" installer\kyra-tube.iss
+          if (-not (Test-Path dist\Kyra-Tube-Setup.exe)) { throw "O instalador não foi gerado." }
+
+      - name: Publicar a release
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/Kyra-Tube-Setup.exe --clobber
+          else
+            gh release create "$TAG" dist/Kyra-Tube-Setup.exe --title "Kyra Tube $TAG" --notes-file notes.txt ${{ steps.notes.outputs.pre }}
+          fi

@@ -1,0 +1,27 @@
+# A cada push e pull request: confere que o código compila e que os testes passam.
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: python -m pip install pytest requests
+      - name: O código compila
+        run: python -m compileall -q main.py core ui
+      - name: Testes
+        run: python -m pytest -q
