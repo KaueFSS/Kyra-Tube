@@ -154,6 +154,17 @@ python scripts/release.py 3.1.0
 
 O script lê as novidades do [`CHANGELOG.md`](CHANGELOG.md), muda `APP_VERSION`, faz o commit, cria a tag e envia. O GitHub Actions roda os testes, gera o executável (PyInstaller) e o instalador (Inno Setup) e publica a release. Quem já usa o app recebe o aviso na próxima abertura. Com `--pre`, a release sai como pré-lançamento: dá para baixar e testar, mas o app não a oferece.
 
+## Histórico
+
+O app existe desde abril, com o nome **OffTube**. Em outubro virou **Kyra Tube** e o código foi aberto.
+
+| Quando | O que aconteceu |
+|---|---|
+| 16/04 | `v2.0.0`: primeira versão do app, ainda como OffTube |
+| 17/04 | `v2.0.1` |
+| 26/08 | README do projeto |
+| 14/10 | **Kyra Tube**: nome e ícone novos, nada coletado ou enviado, atualização com aviso e instalador, publicação pelo GitHub Actions, visual novo, aviso de vídeo já baixado, erros explicados e redimensionar fluido. Os envios grandes de 14/10 foram **reorganizados em passos menores e explicados**; o conteúdo é o mesmo e as datas e horários são os reais |
+
 ## Aviso legal
 
 O Kyra Tube é uma ferramenta de software. Use de acordo com as leis do seu país e com os termos de serviço das plataformas acessadas, e baixe somente conteúdo para o qual você tenha autorização ou direito de uso. Os prints deste README usam o curta *Big Buck Bunny* (© Blender Foundation, [CC-BY](https://creativecommons.org/licenses/by/3.0/)).
