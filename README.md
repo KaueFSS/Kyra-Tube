@@ -16,7 +16,7 @@
 
 <br />
 
-<img src="docs/screenshots/janela.png" alt="Janela do Kyra Tube com um vídeo carregado" width="90%" />
+<img src="docs/screenshots/janela.png" alt="Janela do Kyra Tube com um vídeo carregado" width="88%" />
 
 </div>
 
@@ -31,6 +31,13 @@ Por baixo, usa o [yt-dlp](https://github.com/yt-dlp/yt-dlp) para obter e baixar 
 > Faz parte da família **Kyra**, uma coleção de ferramentas pequenas e bem-cuidadas feitas por [Kauê](https://github.com/KaueFSS), como o [Kyra Plan](https://github.com/KaueFSS/Kyra-Plan).
 
 ## Recursos
+
+<div align="center">
+<img src="docs/screenshots/baixando.png" alt="Download em andamento, com velocidade e tempo restante" width="88%" />
+</div>
+
+<br />
+
 
 - **Vídeo** em MP4, MKV ou WebM, de 360p até 4K (ou a melhor qualidade disponível)
 - **Áudio** em MP3 de 96 a 320 kbps

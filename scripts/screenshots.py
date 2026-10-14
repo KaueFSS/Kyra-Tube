@@ -24,16 +24,19 @@ OUT.mkdir(parents=True, exist_ok=True)
 SAMPLE = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
 
 app = App()
-app.geometry("1100x700+60+40")
-app.attributes("-topmost", True)
+app.geometry("1000x690+60+30")
 
 
 def grab(name):
-    app.update_idletasks()
+    """Foto só da região da janela do app, com checagem de que é ela mesma (e não outra coisa na tela)."""
+    app.lift()
+    app.attributes("-topmost", True)
+    app.update()
     x, y, w, h = app.winfo_rootx(), app.winfo_rooty(), app.winfo_width(), app.winfo_height()
-    shot = ImageGrab.grab(bbox=(x, y, x + w, y + h))
-    if shot.convert("L").getextrema()[1] < 10:   # tela apagada/bloqueada: não salva imagem preta
-        raise SystemExit("A captura saiu preta (tela bloqueada?). Tente de novo com a tela ligada.")
+    shot = ImageGrab.grab(bbox=(x, y, x + w, y + h)).convert("RGB")
+    bar = shot.getpixel((w // 2, 12))                 # a barra de cima tem a cor SURFACE
+    if max(abs(bar[0] - 17), abs(bar[1] - 20), abs(bar[2] - 26)) > 6:
+        raise SystemExit(f"A captura não parece ser a janela do app (cor {bar}). Tente de novo.")
     shot.save(OUT / name)
     print("salvo:", OUT / name)
 
@@ -52,6 +55,21 @@ def step_shot_banner():
 
 def step_shot_window():
     grab("janela.png")
+    # Estado "baixando" simulado só para o print (nada é baixado de verdade).
+    app.progress_card.grid()
+    app.prog_lbl.configure(text="Baixando…  42,3%")
+    app.speed_lbl.configure(text="4,8 MiB/s  ·  ETA 00:21")
+    app.pbar.set(0.423)
+    app.status_lbl.configure(text="Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.mp4")
+    app.vid_prog_lbl.configure(text="")
+    app.vid_pbar.set(0)
+    app.dl_btn.configure(state="disabled", text="Baixando…")
+    app.cancel_btn.configure(state="normal")
+    app.after(800, step_shot_progress)
+
+
+def step_shot_progress():
+    grab("baixando.png")
     app.destroy()
 
 
