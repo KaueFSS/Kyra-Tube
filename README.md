@@ -1,258 +1,134 @@
-# OffTube
+<div align="center">
 
-> Downloader de vídeos e áudios para desktop, com interface gráfica simples e moderna.
+<img src="assets/kyra-tube.svg" width="96" alt="Ícone do Kyra Tube" />
 
-O **OffTube** é uma aplicação desktop desenvolvida em Python para facilitar o download de conteúdos através de links, usando **yt-dlp** como mecanismo principal e **FFmpeg** para processamento e conversão de mídia.
+# Kyra Tube
 
-## ✨ Recursos
+**Baixe vídeos e playlists do YouTube em MP3 ou MP4, com qualidade, rapidez e sem rastreio.**
 
-- 🎬 Download de vídeos por URL
-- 🎵 Extração de áudio em MP3
-- 📺 Suporte a diferentes formatos:
-  - MP4
-  - MP3
-  - MKV
-  - WebM
-- 🎚️ Seleção de qualidade de vídeo:
-  - 360p
-  - 480p
-  - 720p
-  - 1080p
-  - 4K
-  - Melhor qualidade disponível
-- 🎧 Qualidade de MP3 configurável
-- 📝 Download de legendas em português e inglês
-- 🖼️ Download e conversão de thumbnails
-- 📋 Detecção de playlists
-- 📊 Barra de progresso e velocidade de download
-- 👀 Pré-visualização das informações do conteúdo
-- 📁 Escolha da pasta de destino
-- 📜 Histórico de downloads
-- 🔄 Verificação automática de atualizações
-- ⚙️ Instalação automática das dependências durante o modo de desenvolvimento
-- 🧩 FFmpeg integrado através do `imageio-ffmpeg`
-- 🖥️ Interface construída com CustomTkinter
+[![Última versão](https://img.shields.io/github/v/release/KaueFSS/Kyra-Tube?label=vers%C3%A3o&color=ff5a4f)](https://github.com/KaueFSS/Kyra-Tube/releases/latest)
+[![Testes](https://github.com/KaueFSS/Kyra-Tube/actions/workflows/ci.yml/badge.svg)](https://github.com/KaueFSS/Kyra-Tube/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows&logoColor=white)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-lightgrey)](LICENSE)
 
-## 🛠️ Tecnologias
+[**Baixar para Windows**](https://github.com/KaueFSS/Kyra-Tube/releases/latest/download/Kyra-Tube-Setup.exe) &nbsp;·&nbsp; [Código-fonte](#rodar-pelo-código) &nbsp;·&nbsp; [Como atualiza](#atualização-automática) &nbsp;·&nbsp; [Privacidade](#privacidade)
 
-| Tecnologia | Utilização |
-|---|---|
-| Python | Linguagem principal |
-| CustomTkinter | Interface gráfica |
-| yt-dlp | Download e obtenção de informações |
-| FFmpeg | Conversão e processamento de mídia |
-| Pillow | Manipulação de imagens |
-| imageio-ffmpeg | Distribuição do FFmpeg |
-| Requests | Requisições HTTP |
+<br />
 
-## 📁 Estrutura do projeto
+<img src="docs/screenshots/janela.png" alt="Janela do Kyra Tube com um vídeo carregado" width="90%" />
+
+</div>
+
+<br />
+
+## O que é
+
+O Kyra Tube é um aplicativo de desktop para Windows: cole o link, escolha o formato e a qualidade, e baixe. Funciona com **vídeos e playlists inteiras**, mostra uma prévia antes de baixar, acompanha o progresso e a velocidade, e guarda um histórico do que você baixou.
+
+Por baixo, usa o [yt-dlp](https://github.com/yt-dlp/yt-dlp) para obter e baixar o conteúdo e o [FFmpeg](https://ffmpeg.org) (já embutido) para converter. A interface é feita com [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter).
+
+> Faz parte da família **Kyra**, uma coleção de ferramentas pequenas e bem-cuidadas feitas por [Kauê](https://github.com/KaueFSS), como o [Kyra Plan](https://github.com/KaueFSS/Kyra-Plan).
+
+## Recursos
+
+- **Vídeo** em MP4, MKV ou WebM, de 360p até 4K (ou a melhor qualidade disponível)
+- **Áudio** em MP3 de 96 a 320 kbps
+- **Playlists**: o app detecta e deixa você escolher quais vídeos baixar
+- **Legendas** em português e inglês, quando existirem (inclusive as automáticas)
+- **Thumbnail** salva em JPG, PNG ou WebP
+- **Prévia** com título, duração, visualizações e canal antes de baixar
+- **Progresso** por vídeo e da playlist inteira, com velocidade
+- **Histórico** dos downloads
+- **Atualização automática**, com aviso e barra de progresso, sem janela de terminal
+
+## Privacidade
+
+O Kyra Tube **não coleta nem envia nenhum dado seu**. Não tem conta, não tem análise de uso, e o nome do seu usuário do Windows nunca sai do computador.
+
+O app só fala com dois lugares: o **YouTube** (para baixar o que você pediu) e o **GitHub** (para saber se existe uma versão nova). O histórico fica num arquivo no seu próprio computador (`~/.kyra_tube.json`). E, como o código é aberto, você pode conferir isso lendo a pasta [`core/`](core).
+
+## Atualização automática
+
+<div align="center">
+<img src="docs/screenshots/atualizacao.png" alt="Aviso de atualização na parte de baixo da janela" width="80%" />
+</div>
+
+<br />
+
+1. Ao abrir (e a cada 6 horas), o app consulta a última [release](https://github.com/KaueFSS/Kyra-Tube/releases) no GitHub.
+2. Se houver versão nova, aparece um aviso embaixo da janela com as novidades. **Nada é baixado sem você clicar em "Atualizar agora".**
+3. O instalador é baixado com barra de progresso e conferido pelo hash **SHA-256** publicado pelo GitHub.
+4. Ele roda em modo silencioso, troca os arquivos e **abre o Kyra Tube de novo sozinho**. Seu histórico e suas preferências continuam onde estavam.
+
+Esse mesmo caminho vale para quem compila o projeto: publicar uma versão é enviar uma tag, e o GitHub Actions gera o instalador e a release.
+
+## Instalar
+
+Baixe o [`Kyra-Tube-Setup.exe`](https://github.com/KaueFSS/Kyra-Tube/releases/latest/download/Kyra-Tube-Setup.exe) e execute. Instala só para o seu usuário (não pede administrador) e se atualiza sozinho dali em diante.
+
+> Como o instalador ainda não tem certificado de editor pago, o Windows SmartScreen pode avisar na primeira vez: clique em **Mais informações → Executar assim mesmo**.
+
+## Rodar pelo código
+
+Precisa de Python 3.10 ou mais novo.
+
+```bash
+git clone https://github.com/KaueFSS/Kyra-Tube.git
+cd Kyra-Tube
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python main.py
+```
+
+Testes:
+
+```bash
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest
+```
+
+Gerar o executável e o instalador (precisa do [Inno Setup 6](https://jrsoftware.org/isdl.php)):
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+```
+
+## Como o projeto é organizado
 
 ```text
-OffTube_source/
-├── OffTube.py
-│
-├── core/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── discord.py
-│   ├── downloader.py
-│   ├── history.py
-│   ├── setup.py
-│   └── updater.py
-│
-└── ui/
-    ├── __init__.py
-    ├── app.py
-    ├── history_window.py
-    ├── playlist_window.py
-    ├── preview.py
-    ├── progress_hooks.py
-    └── theme.py
+main.py                  Ponto de entrada
+core/                    Lógica, sem interface
+  config.py              Nome, versão e endereço das releases
+  downloader.py          Opções e execução do yt-dlp
+  updater.py             Consulta, download, SHA-256 e instalação da atualização
+  history.py             Histórico (migra o arquivo da época do OffTube)
+  setup.py               Dependências, FFmpeg e caminhos
+ui/                      Interface (CustomTkinter)
+  app.py                 Janela principal
+  update_banner.py       Aviso de atualização
+  preview.py             Prévia do vídeo/playlist
+  playlist_window.py     Escolha dos vídeos da playlist
+  history_window.py      Janela do histórico
+  progress_hooks.py      Progresso do download
+installer/               Script do instalador (Inno Setup)
+scripts/                 build.ps1, release.py, screenshots.py
+tests/                   Testes do atualizador e do histórico
+.github/workflows/       Testes e publicação das versões
 ```
 
-## 🚀 Como executar
-
-### 1. Clone o repositório
+## Lançar uma versão
 
 ```bash
-git clone https://github.com/KaueFSS/OffTube_source.git
-cd OffTube_source
+python scripts/release.py 3.1.0
 ```
 
-### 2. Execute o projeto
+O script lê as novidades do [`CHANGELOG.md`](CHANGELOG.md), muda `APP_VERSION`, faz o commit, cria a tag e envia. O GitHub Actions roda os testes, gera o executável (PyInstaller) e o instalador (Inno Setup) e publica a release. Quem já usa o app recebe o aviso na próxima abertura. Com `--pre`, a release sai como pré-lançamento: dá para baixar e testar, mas o app não a oferece.
 
-```bash
-python OffTube.py
-```
+## Aviso legal
 
-O projeto possui um sistema de configuração que verifica e instala automaticamente algumas dependências ausentes quando executado em modo de desenvolvimento.
+O Kyra Tube é uma ferramenta de software. Use de acordo com as leis do seu país e com os termos de serviço das plataformas acessadas, e baixe somente conteúdo para o qual você tenha autorização ou direito de uso. Os prints deste README usam o curta *Big Buck Bunny* (© Blender Foundation, [CC-BY](https://creativecommons.org/licenses/by/3.0/)).
 
-As principais dependências utilizadas são:
+## Autor
 
-```text
-customtkinter
-Pillow
-imageio-ffmpeg
-yt-dlp
-requests
-```
-
-Caso prefira instalar manualmente:
-
-```bash
-pip install customtkinter Pillow imageio-ffmpeg yt-dlp requests
-```
-
-## ▶️ Uso
-
-1. Abra o OffTube.
-2. Cole a URL do conteúdo.
-3. Escolha o formato desejado.
-4. Selecione a qualidade.
-5. Escolha a pasta de destino.
-6. Opcionalmente, habilite legendas ou thumbnail.
-7. Inicie o download.
-
-O aplicativo mostra o progresso do download diretamente na interface.
-
-## 🎞️ Formatos
-
-### Vídeo
-
-O OffTube permite selecionar:
-
-- `MP4`
-- `MKV`
-- `WebM`
-
-A qualidade pode ser configurada entre 360p e 4K, dependendo das opções disponíveis para o conteúdo.
-
-### Áudio
-
-Ao selecionar `MP3`, o áudio é extraído usando FFmpeg.
-
-Qualidades disponíveis:
-
-- `320k`
-- `256k`
-- `192k`
-- `128k`
-- `96k`
-
-## 📝 Legendas
-
-É possível solicitar legendas em:
-
-- Português (`pt`)
-- Inglês (`en`)
-
-Quando disponíveis, o OffTube também pode utilizar legendas automáticas.
-
-## 🖼️ Thumbnails
-
-O aplicativo pode salvar a thumbnail do conteúdo.
-
-Formatos disponíveis:
-
-- JPG
-- PNG
-- WebP
-
-## 📋 Playlists
-
-Quando uma playlist é detectada, o aplicativo apresenta uma opção específica para selecionar os vídeos que serão baixados.
-
-Isso permite escolher individualmente quais itens da playlist devem ser processados.
-
-## 🔄 Atualizações
-
-O projeto possui um sistema de atualização integrado.
-
-A versão atual definida no código é:
-
-```text
-v2.0.1
-```
-
-A configuração da versão fica em:
-
-```text
-core/config.py
-```
-
-O aplicativo também possui lógica para verificar novas versões e atualizar a aplicação distribuída.
-
-## 📦 Gerando o executável
-
-O projeto possui comandos preparados para utilizar **PyInstaller**.
-
-Exemplo:
-
-```bash
-python -m PyInstaller --onefile --windowed --name OffTube OffTube.py
-```
-
-Também existe suporte para utilizar um arquivo `.spec`:
-
-```bash
-py -m PyInstaller --clean OffTube.spec
-```
-
-## 🧠 Arquitetura
-
-O projeto é dividido principalmente em duas camadas:
-
-### `core/`
-
-Responsável pela lógica da aplicação.
-
-- `downloader.py` → download e processamento dos arquivos
-- `config.py` → configurações gerais
-- `setup.py` → dependências e FFmpeg
-- `history.py` → histórico
-- `updater.py` → atualizações
-- `discord.py` → integração relacionada ao Discord
-
-### `ui/`
-
-Responsável pela interface gráfica.
-
-- `app.py` → aplicação principal
-- `preview.py` → pré-visualização
-- `playlist_window.py` → seleção de playlists
-- `history_window.py` → histórico
-- `progress_hooks.py` → atualização do progresso
-- `theme.py` → tema visual
-
-## 🔐 Segurança
-
-**Importante:** nunca coloque tokens, webhooks, chaves de API ou outras credenciais diretamente no código-fonte de um repositório público.
-
-Antes de publicar ou redistribuir o projeto, utilize variáveis de ambiente ou um arquivo de configuração local para informações sensíveis.
-
-Se uma credencial já foi publicada acidentalmente, ela deve ser considerada comprometida e revogada/rotacionada.
-
-## ⚖️ Aviso legal
-
-O OffTube é uma ferramenta de software.
-
-O usuário é responsável por utilizar o aplicativo de acordo com as leis aplicáveis e com os termos de serviço das plataformas acessadas.
-
-Baixe somente conteúdos para os quais você possui autorização ou direito de uso.
-
-## 👨‍💻 Autor
-
-Desenvolvido por **KaueFSS**.
-
-- GitHub: https://github.com/KaueFSS
-- Projeto: https://github.com/KaueFSS/OffTube_source
-
-## 📄 Licença
-
-Nenhuma licença de código aberto foi identificada no repositório no momento.
-
-Se você pretende permitir que outras pessoas utilizem, modifiquem ou redistribuam o projeto, considere adicionar uma licença, como MIT, Apache-2.0 ou GPL-3.0.
-
----
-
-⭐ Se o projeto foi útil para você, considere deixar uma estrela no repositório.
+Feito por **Kauê** — [@KaueFSS](https://github.com/KaueFSS). Licença [MIT](LICENSE).
