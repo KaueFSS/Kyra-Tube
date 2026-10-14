@@ -1,9 +1,12 @@
 # ═══════════════════════════════════════════════════════════════
 #  ui/app.py — Janela principal do Kyra Tube
 #  ► Layout / widgets: edite os métodos _build_*()
-#  ► Progresso: ui/progress_hooks.py
-#  ► Preview:   ui/preview.py
-#  ► Download:  core/downloader.py
+#  ► Cores e fontes: ui/theme.py
+#  ► Progresso: ui/progress_hooks.py   ► Preview: ui/preview.py
+#  ► Download:  core/downloader.py     ► Atualização: core/updater.py
+#
+#  A janela é montada INVISÍVEL (alpha 0) e só aparece quando está pronta, para
+#  nada "montar aos poucos" na frente de quem usa.
 # ═══════════════════════════════════════════════════════════════
 import os, threading, time, webbrowser
 from datetime import datetime
@@ -18,23 +21,26 @@ from core.history    import load_hist, save_hist
 from core.downloader import build_opts, run_download, FFMPEG
 from core.setup      import IS_FROZEN, resource_path
 from core            import updater
-from ui.theme        import (BG, SURFACE, CARD, BORDER,
-                              BLUE, BLUE_H, TEXT, MUTED,
-                              GREEN, RED, YELLOW, ORANGE, PURPLE)
+from ui.theme        import (BG, SURFACE, CARD, CARD_HI, BORDER, ACCENT, ACCENT_H, ACCENT_SOFT, TEAL,
+                              TEXT, MUTED, DIM, GREEN, RED, YELLOW, ORANGE, RADIUS, font, mono)
 from ui.progress_hooks  import ProgressMixin
 from ui.preview         import PreviewMixin
 from ui.playlist_window import PlaylistSelectorWindow
 from ui.history_window  import open_history_window
 from ui.update_banner   import UpdateBanner
 
+VIDEO_QUALITIES = ["360p", "480p", "720p", "1080p", "4K", "Melhor"]
+MP3_QUALITIES   = ["320k", "256k", "192k", "128k", "96k"]
+PAD = 24   # margem lateral do conteúdo
+
 
 class App(ProgressMixin, PreviewMixin, ctk.CTk):
 
     def __init__(self):
         ctk.CTk.__init__(self)
+        self.attributes("-alpha", 0.0)        # monta invisível; aparece pronta em _reveal()
         self.configure(fg_color=BG)
         self.title(APP_NAME)
-        self._set_window_icon()
         self.resizable(True, True)
 
         # Variáveis de controle
@@ -58,27 +64,37 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self._last_finished = None
         self._pl_entries    = []
         self._is_playlist   = False
+        self._pending_release = None
+        self._dismissed     = None
         self.history        = load_hist()
 
         self._build()
+        self.url_v.trace_add("write", self._url_changed)
+        self._reveal()
+
+    # ── Abrir pronta ────────────────────────────────────────────
+    def _reveal(self):
+        """Calcula tudo escondida e só então mostra a janela, já completa."""
         self.update_idletasks()
         self._fit_screen()
-        self.url_v.trace_add("write", self._url_changed)
-        self.after(500, self._start_update_check)
+        self.update_idletasks()
+        self.attributes("-alpha", 1.0)
+        self._set_window_icon()
+        self.after(600, self._start_update_check)
 
-    # ── Tamanho ─────────────────────────────────────────────────
     def _fit_screen(self):
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w = max(min(1100, int(sw * 0.75)), 1000)
-        h = max(min(700,  int(sh * 0.80)), 600)
-        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
-        self.minsize(1000, 600)
+        scale = self._get_window_scaling()           # telas com zoom (125%, 150%...)
+        sw, sh = self.winfo_screenwidth() / scale, self.winfo_screenheight() / scale
+        w = min(1000, int(sw * 0.82))
+        h = min(690, int(sh * 0.90))
+        self.minsize(min(860, w), min(580, h))
+        self.geometry(f"{w}x{h}+{(sw - w) // 2}+{max((sh - h) // 3, 0)}")
 
-    # ── Ícone da janela ─────────────────────────────────────────
     def _set_window_icon(self):
         ico = resource_path("assets/kyra-tube.ico")
         # O customtkinter troca o ícone logo ao abrir; por isso o atraso.
-        self.after(250, lambda: self._safe(lambda: self.iconbitmap(str(ico))))
+        self.after(250, lambda: self._safe(lambda: self.iconbitmap(default=str(ico))))
+        self.after(260, lambda: self._safe(lambda: self.iconbitmap(str(ico))))
 
     @staticmethod
     def _safe(fn):
@@ -92,18 +108,16 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
     # nada é baixado ou instalado sem o clique em "Atualizar agora".
     def _start_update_check(self):
         if not IS_FROZEN:
-            self._set_update_lbl(f"● {APP_VERSION} (dev)", MUTED)
+            self._set_update_lbl("modo desenvolvimento", MUTED)
             return
-        self._pending_release = None
-        self._dismissed = None
         threading.Thread(target=self._check_update, kwargs={"silent": True}, daemon=True).start()
         threading.Thread(target=self._update_loop, daemon=True).start()
 
     def _manual_update_check(self):
         if not IS_FROZEN:
-            self._set_update_lbl(f"● {APP_VERSION} (dev)", MUTED)
+            self._set_update_lbl("modo desenvolvimento", MUTED)
             return
-        self._set_update_lbl("verificando…", MUTED)
+        self._set_update_lbl("Verificando…", MUTED)
         self._dismissed = None
         threading.Thread(target=self._check_update, kwargs={"silent": False}, daemon=True).start()
 
@@ -114,13 +128,13 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
                 return
             self._pending_release = release
             self.after(0, lambda: (
-                self._set_update_lbl(f"● {APP_VERSION}  ·  {release.version} disponível", ORANGE),
+                self._set_update_lbl(f"{release.version} disponível", ACCENT),
                 self.update_banner.show_available(release.version, release.notes),
             ))
         elif not silent:
-            msg = f"✓ {APP_VERSION}  ·  você está na versão mais recente" if release else "Sem conexão com o GitHub"
-            self.after(0, lambda: self._set_update_lbl(msg, GREEN if release else RED))
-            self.after(5000, lambda: self._set_update_lbl(f"● {APP_VERSION}", MUTED))
+            msg, color = ("Você está na versão mais recente", GREEN) if release else ("Sem conexão com o GitHub", RED)
+            self.after(0, lambda: self._set_update_lbl(msg, color))
+            self.after(5000, lambda: self._set_update_lbl(f"v{APP_VERSION}", MUTED))
 
     def _update_loop(self):
         while True:
@@ -157,256 +171,233 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
     def _set_update_lbl(self, text, color):
         self._safe(lambda: self.update_lbl.configure(text=text, text_color=color))
 
-    # ── Build ───────────────────────────────────────────────────
+    # ── Construção da interface ─────────────────────────────────
     def _build(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self._build_topbar()
-        body = self._build_body()
-        self._build_preview_area(body)
-        self._build_url_row(body)
-        self._build_options(body)
-        self._build_checkboxes(body)
-        self._build_progress(body)
-        self._build_buttons(body)
+        body = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
+        body.grid(row=1, column=0, sticky="nsew", padx=PAD, pady=(14, 0))
+        body.grid_columnconfigure(0, weight=1)
+        self._build_url_row(body)            # linha 0
+        self._build_preview_area(body)       # linha 1
+        self._build_options(body)            # linha 2
+        self._build_buttons(body)            # linha 3
+        self._build_progress(body)           # linha 4
+        ctk.CTkLabel(body, text="Kyra Tube  ·  yt-dlp  ·  FFmpeg embutido  ·  por Kauê (@KaueFSS)",
+            font=font(10), text_color=DIM,
+        ).grid(row=5, column=0, pady=(6, 8))
         self.update_banner = UpdateBanner(self, on_update=self._update_now, on_later=self._update_later)
         self.update_banner.grid(row=2, column=0, sticky="ew")
         self.update_banner.grid_remove()
-        ctk.CTkLabel(body,
-            text="Kyra Tube  ·  yt-dlp  ·  FFmpeg embutido  ·  por Kauê (@KaueFSS)",
-            font=ctk.CTkFont(size=10), text_color=BORDER,
-        ).grid(row=6, column=0, pady=(4, 10))
+
+    def _card(self, parent, row, pady=(0, 10)):
+        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=RADIUS, border_width=1, border_color=BORDER)
+        f.grid(row=row, column=0, sticky="ew", pady=pady)
+        f.grid_columnconfigure(0, weight=1)
+        return f
 
     def _build_topbar(self):
-        top = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=50)
+        top = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=52)
         top.grid(row=0, column=0, sticky="ew")
         top.grid_propagate(False)
         top.grid_columnconfigure(1, weight=1)
         self._logo_img = self._load_logo()
         brand = ctk.CTkFrame(top, fg_color="transparent")
-        brand.grid(row=0, column=0, padx=(16, 0), sticky="w")
+        brand.grid(row=0, column=0, padx=(PAD, 0), sticky="w")
         if self._logo_img:
-            ctk.CTkLabel(brand, text="", image=self._logo_img).pack(side="left", padx=(0, 8), pady=10)
-        ctk.CTkLabel(brand, text="Kyra",
-            font=ctk.CTkFont(size=18, weight="bold"), text_color=TEXT).pack(side="left")
-        ctk.CTkLabel(brand, text=" Tube",
-            font=ctk.CTkFont(size=18, weight="bold"), text_color=BLUE).pack(side="left")
+            ctk.CTkLabel(brand, text="", image=self._logo_img).pack(side="left", padx=(0, 10), pady=9)
+        ctk.CTkLabel(brand, text="Kyra", font=font(18, "bold"), text_color=TEXT).pack(side="left")
+        ctk.CTkLabel(brand, text=" Tube", font=font(18, "bold"), text_color=ACCENT).pack(side="left")
         right = ctk.CTkFrame(top, fg_color="transparent")
-        right.grid(row=0, column=2, padx=14, sticky="e")
-        self.update_lbl = ctk.CTkLabel(right, text=f"● {APP_VERSION}",
-            font=ctk.CTkFont(size=11), text_color=MUTED)
-        self.update_lbl.pack(side="left", padx=(0, 10))
-        ctk.CTkButton(right, text="Atualizações", width=96, height=28,
-            font=ctk.CTkFont(size=11), fg_color=BORDER, hover_color="#2a2a42",
-            corner_radius=5, command=self._manual_update_check,
-        ).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(right, text="GitHub ↗", width=80, height=28,
-            font=ctk.CTkFont(size=11), fg_color=BORDER, hover_color="#2a2a42",
-            corner_radius=5,
-            command=lambda: webbrowser.open(f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}"),
-        ).pack(side="left")
+        right.grid(row=0, column=2, padx=(0, PAD), sticky="e")
+        self.update_lbl = ctk.CTkLabel(right, text=f"v{APP_VERSION}", font=font(11), text_color=MUTED)
+        self.update_lbl.pack(side="left", padx=(0, 12))
+        self._ghost_btn(right, "Atualizações", self._manual_update_check).pack(side="left", padx=(0, 8))
+        self._ghost_btn(right, "GitHub ↗", lambda: webbrowser.open(f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}")).pack(side="left")
+        ctk.CTkFrame(self, fg_color=BORDER, height=1, corner_radius=0).place(x=0, y=52, relwidth=1)
+
+    def _ghost_btn(self, parent, text, command, width=0, height=32):
+        return ctk.CTkButton(parent, text=text, height=height, width=width or 10, font=font(12),
+            fg_color="transparent", hover_color=CARD_HI, border_width=1, border_color=BORDER,
+            text_color=TEXT, corner_radius=8, command=command)
 
     def _load_logo(self):
         try:
             from PIL import Image
             img = Image.open(resource_path("assets/kyra-tube.png"))
-            return ctk.CTkImage(light_image=img, dark_image=img, size=(30, 30))
+            return ctk.CTkImage(light_image=img, dark_image=img, size=(32, 32))
         except Exception:
             return None
 
-    def _build_body(self):
-        body = ctk.CTkScrollableFrame(self, fg_color=BG, scrollbar_button_color=BORDER)
-        body.grid(row=1, column=0, sticky="nsew")
-        body.grid_columnconfigure(0, weight=1)
-        return body
+    def _build_url_row(self, body):
+        card = self._card(body, 0)
+        card.grid_columnconfigure(0, weight=1)
+        # Sem textvariable de propósito: com ela o customtkinter esconde o texto de ajuda.
+        # A ligação com url_v é feita à mão (entry → url_v e url_v → entry).
+        self.entry = ctk.CTkEntry(card, placeholder_text="Cole o link de um vídeo ou playlist do YouTube",
+            height=42, font=font(14), fg_color=BG, border_color=BORDER, border_width=1,
+            corner_radius=10, text_color=TEXT)
+        self.entry.grid(row=0, column=0, sticky="ew", padx=(12, 8), pady=11)
+        for event in ("<KeyRelease>", "<<Paste>>", "<<Cut>>", "<<Clear>>"):
+            self.entry.bind(event, lambda _e: self.after(1, self._entry_to_var), add="+")
+        self.url_v.trace_add("write", lambda *_: self._var_to_entry())
+        ctk.CTkButton(card, text="Colar", width=88, height=42, font=font(13, "bold"),
+            fg_color=CARD_HI, hover_color=BORDER, text_color=TEXT, corner_radius=10,
+            command=self._paste).grid(row=0, column=1, padx=(0, 12), pady=11)
 
     def _build_preview_area(self, body):
         """Widgets do preview; a lógica vive em ui/preview.py (PreviewMixin)."""
-        row0 = ctk.CTkFrame(body, fg_color="transparent")
-        row0.grid(row=0, column=0, pady=(14, 0), padx=18, sticky="ew")
-        row0.grid_columnconfigure(1, weight=1)
+        card = self._card(body, 1)
+        card.grid_columnconfigure(0, weight=0)   # a capa não estica; o texto ocupa o resto
+        card.grid_columnconfigure(1, weight=1)
 
-        tc = ctk.CTkFrame(row0, fg_color=CARD, corner_radius=10,
-                           border_width=1, border_color=BORDER, width=200, height=118)
-        tc.grid(row=0, column=0, sticky="w")
+        tc = ctk.CTkFrame(card, fg_color=BG, corner_radius=10, width=192, height=108)
+        tc.grid(row=0, column=0, padx=12, pady=12, sticky="w")
         tc.grid_propagate(False)
-        self.thumb_lbl = ctk.CTkLabel(tc, text="🎬",
-            font=ctk.CTkFont(size=22), text_color=MUTED,
-            width=200, height=118, fg_color="transparent")
+        self.thumb_lbl = ctk.CTkLabel(tc, text="▶", font=font(26), text_color=DIM,
+            width=192, height=108, fg_color="transparent")
         self.thumb_lbl.place(relx=0.5, rely=0.5, anchor="center")
 
-        ic = ctk.CTkFrame(row0, fg_color="transparent")
-        ic.grid(row=0, column=1, padx=(12, 0), sticky="nsew")
+        ic = ctk.CTkFrame(card, fg_color="transparent")
+        ic.grid(row=0, column=1, padx=(2, 16), pady=12, sticky="nsew")
         ic.grid_columnconfigure(0, weight=1)
-        self.title_lbl = ctk.CTkLabel(ic, text="Cole um link para começar",
-            font=ctk.CTkFont(size=13), text_color=MUTED,
-            anchor="nw", wraplength=560, justify="left")
-        self.title_lbl.grid(row=0, column=0, sticky="nw", pady=(4, 0))
-        self.meta_lbl = ctk.CTkLabel(ic, text="",
-            font=ctk.CTkFont(family="Courier New", size=11),
-            text_color=MUTED, anchor="w")
-        self.meta_lbl.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.title_lbl = ctk.CTkLabel(ic, text="Cole um link para começar", font=font(16, "bold"),
+            text_color=MUTED, anchor="nw", wraplength=620, justify="left")
+        self.title_lbl.grid(row=0, column=0, sticky="nw", pady=(2, 0))
+        self.meta_lbl = ctk.CTkLabel(ic, text="O título, a duração e o canal aparecem aqui.", font=font(12),
+            text_color=DIM, anchor="w")
+        self.meta_lbl.grid(row=1, column=0, sticky="w", pady=(6, 0))
 
-        self._pl_banner = ctk.CTkFrame(ic, fg_color="#1a1a2e", corner_radius=8,
-                                        border_width=1, border_color=PURPLE)
-        self._pl_banner.grid(row=2, column=0, sticky="ew", pady=(8, 0))
-        self._pl_banner.grid_columnconfigure(0, weight=1)
+        self._pl_banner = ctk.CTkFrame(ic, fg_color=ACCENT_SOFT, corner_radius=8, border_width=1, border_color=ACCENT)
+        self._pl_banner.grid(row=2, column=0, sticky="w", pady=(12, 0))
+        ctk.CTkLabel(self._pl_banner, text="Playlist detectada — clique em Baixar para escolher os vídeos",
+            font=font(12, "bold"), text_color=ACCENT, anchor="w",
+        ).grid(row=0, column=0, padx=12, pady=7)
         self._pl_banner.grid_remove()
-        pi = ctk.CTkFrame(self._pl_banner, fg_color="transparent")
-        pi.grid(row=0, column=0, padx=10, pady=6, sticky="ew")
-        pi.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(pi,
-            text="📋  Playlist detectada!  Clique em Baixar para selecionar os vídeos.",
-            font=ctk.CTkFont(size=11), text_color=PURPLE, anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-
-    def _build_url_row(self, body):
-        r = ctk.CTkFrame(body, fg_color="transparent")
-        r.grid(row=1, column=0, pady=(12, 0), padx=18, sticky="ew")
-        r.grid_columnconfigure(0, weight=1)
-        self.entry = ctk.CTkEntry(r, placeholder_text="URL do YouTube...",
-            textvariable=self.url_v, height=40, font=ctk.CTkFont(size=13),
-            fg_color=CARD, border_color=BORDER, border_width=1)
-        self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ctk.CTkButton(r, text="Colar", width=70, height=40,
-            fg_color=BORDER, hover_color="#2a2a42", corner_radius=6,
-            command=self._paste).grid(row=0, column=1)
 
     def _build_options(self, body):
-        f = ctk.CTkFrame(body, fg_color=CARD, corner_radius=10,
-                          border_width=1, border_color=BORDER)
-        f.grid(row=2, column=0, pady=(10, 0), padx=18, sticky="ew")
-        f.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        f = self._card(body, 2)
+        f.grid_columnconfigure((0, 1), weight=1)
+        f.grid_columnconfigure(2, weight=2)
 
-        self._sl(f, "Formato", 0, 0)
-        ctk.CTkOptionMenu(f, values=["mp4", "mp3", "mkv", "webm"],
-            variable=self.fmt_v, command=self._fmt_changed,
-            height=32, fg_color=BORDER, button_color=BLUE, button_hover_color=BLUE_H,
-        ).grid(row=1, column=0, padx=10, pady=(2, 10), sticky="ew")
+        self._label(f, "Formato", 0, 0)
+        self.fmt_seg = ctk.CTkSegmentedButton(f, values=["MP4", "MP3", "MKV", "WEBM"],
+            command=self._fmt_changed, height=32, font=font(12, "bold"),
+            fg_color=BG, selected_color=ACCENT, selected_hover_color=ACCENT_H,
+            unselected_color=BG, unselected_hover_color=CARD_HI, text_color=TEXT, corner_radius=8)
+        self.fmt_seg.set("MP4")
+        self.fmt_seg.grid(row=1, column=0, padx=(16, 8), pady=(2, 8), sticky="ew")
 
-        self._sl(f, "Qualidade vídeo", 0, 1)
-        self.qual_om = ctk.CTkOptionMenu(f,
-            values=["360p", "480p", "720p", "1080p", "4K", "Melhor"],
-            variable=self.qual_v, height=32,
-            fg_color=BORDER, button_color=BLUE, button_hover_color=BLUE_H)
-        self.qual_om.grid(row=1, column=1, padx=10, pady=(2, 10), sticky="ew")
+        self.qual_lbl = self._label(f, "Qualidade do vídeo", 0, 1)
+        self.qual_om = ctk.CTkOptionMenu(f, values=VIDEO_QUALITIES, variable=self.qual_v, height=32,
+            font=font(12), dropdown_font=font(12), fg_color=BG, button_color=CARD_HI,
+            button_hover_color=BORDER, dropdown_fg_color=CARD, dropdown_hover_color=CARD_HI,
+            text_color=TEXT, corner_radius=8)
+        self.qual_om.grid(row=1, column=1, padx=8, pady=(2, 8), sticky="ew")
 
-        self.mp3_qual_lbl = ctk.CTkLabel(f, text="Qualidade MP3",
-            font=ctk.CTkFont(size=10), text_color=MUTED)
-        self.mp3_qual_lbl.grid(row=0, column=2, padx=10, pady=(8, 2), sticky="w")
-        self.mp3_qual_lbl.grid_remove()
-        self.mp3_qual_om = ctk.CTkOptionMenu(f,
-            values=["320k", "256k", "192k", "128k", "96k"],
-            variable=self.mp3_qual_v, height=32,
-            fg_color=BORDER, button_color=BLUE, button_hover_color=BLUE_H)
-        self.mp3_qual_om.grid(row=1, column=2, padx=10, pady=(2, 10), sticky="ew")
-        self.mp3_qual_om.grid_remove()
-
-        self._sl(f, "Pasta de destino", 0, 3)
+        self._label(f, "Salvar em", 0, 2)
         fi = ctk.CTkFrame(f, fg_color="transparent")
-        fi.grid(row=1, column=3, padx=10, pady=(2, 10), sticky="ew")
+        fi.grid(row=1, column=2, padx=(8, 16), pady=(2, 8), sticky="ew")
         fi.grid_columnconfigure(0, weight=1)
-        ctk.CTkEntry(fi, textvariable=self.folder_v, state="readonly",
-            height=32, fg_color=BORDER, border_color=BORDER, border_width=0,
-            font=ctk.CTkFont(size=10)).grid(row=0, column=0, sticky="ew", padx=(0, 4))
-        ctk.CTkButton(fi, text="📁", width=32, height=32,
-            fg_color=SURFACE, hover_color="#2a2a42", corner_radius=5,
+        ctk.CTkEntry(fi, textvariable=self.folder_v, state="readonly", height=32, font=font(11),
+            fg_color=BG, border_color=BORDER, border_width=1, corner_radius=8, text_color=MUTED,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ctk.CTkButton(fi, text="Alterar", width=72, height=32, font=font(12),
+            fg_color=CARD_HI, hover_color=BORDER, text_color=TEXT, corner_radius=8,
             command=self._pick_folder).grid(row=0, column=1)
 
-    def _build_checkboxes(self, body):
-        chk = ctk.CTkFrame(body, fg_color=CARD, corner_radius=10,
-                            border_width=1, border_color=BORDER)
-        chk.grid(row=3, column=0, pady=(8, 0), padx=18, sticky="ew")
-        chk.grid_columnconfigure((0, 1, 2), weight=1)
-        ctk.CTkCheckBox(chk, text="Legendas (pt/en)", variable=self.sub_v,
-            font=ctk.CTkFont(size=12), checkmark_color=BLUE,
-            hover_color=BLUE, fg_color=BLUE, border_color=MUTED,
-        ).grid(row=0, column=0, padx=14, pady=8)
-
-        tc = ctk.CTkFrame(chk, fg_color="transparent")
-        tc.grid(row=0, column=1, padx=14, pady=8, sticky="ew")
-        self.thumb_cb = ctk.CTkCheckBox(tc, text="Salvar thumbnail",
-            variable=self.thumb_v, font=ctk.CTkFont(size=12),
-            checkmark_color=BLUE, hover_color=BLUE, fg_color=BLUE, border_color=MUTED,
-            command=self._thumb_toggle)
+        ctk.CTkFrame(f, fg_color=BORDER, height=1, corner_radius=0).grid(
+            row=2, column=0, columnspan=3, sticky="ew", padx=16, pady=(2, 0))
+        toggles = ctk.CTkFrame(f, fg_color="transparent")
+        toggles.grid(row=3, column=0, columnspan=3, sticky="ew", padx=16, pady=(8, 10))
+        switch = dict(font=font(12), text_color=TEXT, progress_color=ACCENT, button_color=TEXT,
+                      button_hover_color=TEXT, fg_color=BORDER, switch_width=38, switch_height=20)
+        ctk.CTkSwitch(toggles, text="Baixar legendas (pt/en)", variable=self.sub_v, **switch).pack(side="left", padx=(0, 28))
+        self.thumb_cb = ctk.CTkSwitch(toggles, text="Salvar a capa", variable=self.thumb_v,
+            command=self._thumb_toggle, **switch)
         self.thumb_cb.pack(side="left")
-        self.thumb_fmt_om = ctk.CTkOptionMenu(tc, values=["jpg", "png", "webp"],
-            variable=self.thumb_fmt_v, width=72, height=26,
-            fg_color=BORDER, button_color=BLUE, button_hover_color=BLUE_H,
-            font=ctk.CTkFont(size=11), state="disabled")
-        self.thumb_fmt_om.pack(side="left", padx=(8, 0))
-
-    def _build_progress(self, body):
-        pg = ctk.CTkFrame(body, fg_color=CARD, corner_radius=10,
-                           border_width=1, border_color=BORDER)
-        pg.grid(row=4, column=0, pady=(8, 0), padx=18, sticky="ew")
-        pg.grid_columnconfigure(0, weight=1)
-
-        ri = ctk.CTkFrame(pg, fg_color="transparent")
-        ri.grid(row=0, column=0, sticky="ew", padx=12, pady=(8, 3))
-        ri.grid_columnconfigure(0, weight=1)
-        self.prog_lbl = ctk.CTkLabel(ri, text="Aguardando",
-            font=ctk.CTkFont(size=12), text_color=MUTED, anchor="w")
-        self.prog_lbl.grid(row=0, column=0, sticky="w")
-        self.speed_lbl = ctk.CTkLabel(ri, text="",
-            font=ctk.CTkFont(family="Courier New", size=11),
-            text_color=BLUE, anchor="e")
-        self.speed_lbl.grid(row=0, column=1, sticky="e")
-
-        self.pl_count_lbl = ctk.CTkLabel(pg, text="",
-            font=ctk.CTkFont(size=11, weight="bold"), text_color=ORANGE, anchor="w")
-        self.pl_count_lbl.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 2))
-
-        self.pbar = ctk.CTkProgressBar(pg, height=5, corner_radius=3,
-            progress_color=BLUE, fg_color=BORDER)
-        self.pbar.set(0)
-        self.pbar.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
-
-        self.status_lbl = ctk.CTkLabel(pg, text="",
-            font=ctk.CTkFont(size=10), text_color=MUTED, wraplength=700, anchor="w")
-        self.status_lbl.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 4))
-
-        self.vid_prog_lbl = ctk.CTkLabel(pg, text="",
-            font=ctk.CTkFont(family="Courier New", size=10), text_color=BLUE, anchor="w")
-        self.vid_prog_lbl.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 2))
-
-        self.vid_pbar = ctk.CTkProgressBar(pg, height=3, corner_radius=2,
-            progress_color=GREEN, fg_color=BORDER)
-        self.vid_pbar.set(0)
-        self.vid_pbar.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 2))
-
-        self.proc_lbl = ctk.CTkLabel(pg, text="",
-            font=ctk.CTkFont(family="Courier New", size=10), text_color=ORANGE, anchor="w")
-        self.proc_lbl.grid(row=6, column=0, sticky="ew", padx=12, pady=(0, 2))
-
-        self.proc_pbar = ctk.CTkProgressBar(pg, height=3, corner_radius=2,
-            progress_color=ORANGE, fg_color=BORDER, mode="indeterminate",
-            indeterminate_speed=0.8)
-        self.proc_pbar.set(0)
-        self.proc_pbar.grid(row=7, column=0, sticky="ew", padx=12, pady=(0, 8))
-        self.proc_pbar.grid_remove()
-        self.proc_lbl.grid_remove()
+        self.thumb_fmt_om = ctk.CTkOptionMenu(toggles, values=["jpg", "png", "webp"], variable=self.thumb_fmt_v,
+            width=76, height=28, font=font(11), dropdown_font=font(11), fg_color=BG, button_color=CARD_HI,
+            button_hover_color=BORDER, dropdown_fg_color=CARD, dropdown_hover_color=CARD_HI,
+            text_color=TEXT, corner_radius=8, state="disabled")
+        self.thumb_fmt_om.pack(side="left", padx=(10, 0))
 
     def _build_buttons(self, body):
         br = ctk.CTkFrame(body, fg_color="transparent")
-        br.grid(row=5, column=0, pady=(10, 4), padx=18, sticky="ew")
+        br.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         br.grid_columnconfigure(0, weight=1)
-        self.dl_btn = ctk.CTkButton(br, text="Baixar", height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=BLUE, hover_color=BLUE_H, corner_radius=8, command=self._start)
-        self.dl_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.cancel_btn = ctk.CTkButton(br, text="✕", width=40, height=40,
-            fg_color=BORDER, hover_color="#3d1515",
-            corner_radius=8, state="disabled", command=self._cancel)
-        self.cancel_btn.grid(row=0, column=1, padx=(0, 6))
-        ctk.CTkButton(br, text="📋", width=40, height=40,
-            fg_color=BORDER, hover_color="#2a2a42", corner_radius=8,
-            command=self._history_window).grid(row=0, column=2)
+        self.dl_btn = ctk.CTkButton(br, text="Baixar", height=46, font=font(15, "bold"),
+            fg_color=ACCENT, hover_color=ACCENT_H, text_color="#ffffff", text_color_disabled="#ffe1de",
+            corner_radius=12, command=self._start)
+        self.dl_btn.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.cancel_btn = ctk.CTkButton(br, text="Cancelar", width=104, height=46, font=font(13),
+            fg_color=CARD, hover_color=ACCENT_SOFT, text_color=TEXT, border_width=1, border_color=BORDER,
+            corner_radius=12, state="disabled", command=self._cancel)
+        self.cancel_btn.grid(row=0, column=1, padx=(0, 8))
+        ctk.CTkButton(br, text="Histórico", width=104, height=46, font=font(13),
+            fg_color=CARD, hover_color=CARD_HI, text_color=TEXT, border_width=1, border_color=BORDER,
+            corner_radius=12, command=self._history_window).grid(row=0, column=2)
+
+    def _build_progress(self, body):
+        pg = self._card(body, 4, pady=(0, 0))
+        pg.grid_columnconfigure(0, weight=1)
+        self.progress_card = pg      # só aparece quando há um download (ou o resultado dele)
+
+        ri = ctk.CTkFrame(pg, fg_color="transparent")
+        ri.grid(row=0, column=0, sticky="ew", padx=16, pady=(10, 2))
+        ri.grid_columnconfigure(0, weight=1)
+        self.prog_lbl = ctk.CTkLabel(ri, text="", font=font(14, "bold"), text_color=TEXT, anchor="w")
+        self.prog_lbl.grid(row=0, column=0, sticky="w")
+        self.speed_lbl = ctk.CTkLabel(ri, text="", font=mono(12), text_color=TEAL, anchor="e")
+        self.speed_lbl.grid(row=0, column=1, sticky="e")
+
+        self.pl_count_lbl = ctk.CTkLabel(pg, text="", font=font(11, "bold"), text_color=ORANGE, anchor="w", height=14)
+        self.pl_count_lbl.grid(row=1, column=0, sticky="ew", padx=16)
+
+        self.pbar = ctk.CTkProgressBar(pg, height=8, corner_radius=4, progress_color=TEAL, fg_color=BORDER)
+        self.pbar.set(0)
+        self.pbar.grid(row=2, column=0, sticky="ew", padx=16, pady=(2, 4))
+
+        self.status_lbl = ctk.CTkLabel(pg, text="", font=font(10), text_color=DIM, wraplength=860, anchor="w", height=14)
+        self.status_lbl.grid(row=3, column=0, sticky="ew", padx=16)
+
+        self.vid_prog_lbl = ctk.CTkLabel(pg, text="", font=mono(10), text_color=TEAL, anchor="w", height=14)
+        self.vid_prog_lbl.grid(row=4, column=0, sticky="ew", padx=16)
+
+        self.vid_pbar = ctk.CTkProgressBar(pg, height=4, corner_radius=2, progress_color=GREEN, fg_color=BORDER)
+        self.vid_pbar.set(0)
+        self.vid_pbar.grid(row=5, column=0, sticky="ew", padx=16, pady=(2, 2))
+
+        self.proc_lbl = ctk.CTkLabel(pg, text="", font=mono(10), text_color=YELLOW, anchor="w", height=14)
+        self.proc_lbl.grid(row=6, column=0, sticky="ew", padx=16)
+
+        self.proc_pbar = ctk.CTkProgressBar(pg, height=4, corner_radius=2, progress_color=YELLOW,
+            fg_color=BORDER, mode="indeterminate", indeterminate_speed=0.8)
+        self.proc_pbar.set(0)
+        self.proc_pbar.grid(row=7, column=0, sticky="ew", padx=16, pady=(2, 10))
+        self.proc_pbar.grid_remove()
+        self.proc_lbl.grid_remove()
+        self.vid_prog_lbl.grid_remove()   # só aparecem em playlist (veja progress_hooks)
+        self.vid_pbar.grid_remove()
+        pg.grid_remove()
 
     # ── Helpers ─────────────────────────────────────────────────
-    def _sl(self, p, t, r, c):
-        ctk.CTkLabel(p, text=t, font=ctk.CTkFont(size=10), text_color=MUTED
-        ).grid(row=r, column=c, padx=10, pady=(8, 2), sticky="w")
+    def _label(self, parent, text, row, col):
+        lbl = ctk.CTkLabel(parent, text=text, font=font(11, "bold"), text_color=MUTED)
+        lbl.grid(row=row, column=col, padx=(16 if col == 0 else 8, 8), pady=(10, 0), sticky="w")
+        return lbl
+
+    def _entry_to_var(self):
+        text = self.entry.get()
+        if text != self.url_v.get():
+            self.url_v.set(text)
+
+    def _var_to_entry(self):
+        text = self.url_v.get()
+        if text != self.entry.get():
+            self.entry.delete(0, "end")
+            self.entry.insert(0, text)
 
     def _paste(self):
         try:
@@ -419,25 +410,28 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         if d:
             self.folder_v.set(d)
 
-    def _fmt_changed(self, v):
-        if v == "mp3":
-            self.qual_om.grid_remove()
-            for w in self.qual_om.master.grid_slaves(row=0, column=1):
-                w.grid_remove()
-            self.mp3_qual_lbl.grid()
-            self.mp3_qual_om.grid()
+    def _fmt_changed(self, shown):
+        fmt = shown.lower()
+        self.fmt_v.set(fmt)
+        if fmt == "mp3":
+            self.qual_lbl.configure(text="Qualidade do áudio")
+            self.qual_om.configure(values=MP3_QUALITIES, variable=self.mp3_qual_v)
         else:
-            self.mp3_qual_lbl.grid_remove()
-            self.mp3_qual_om.grid_remove()
-            for w in self.qual_om.master.grid_slaves(row=0, column=1):
-                w.grid()
-            self.qual_om.grid()
+            self.qual_lbl.configure(text="Qualidade do vídeo")
+            self.qual_om.configure(values=VIDEO_QUALITIES, variable=self.qual_v)
 
     def _thumb_toggle(self):
         self.thumb_fmt_om.configure(state="normal" if self.thumb_v.get() else "disabled")
 
+    def _hide_progress_idle(self):
+        """Parado e com link novo: some o card do download anterior."""
+        if str(self.dl_btn.cget("state")) != "disabled":
+            self.progress_card.grid_remove()
+
     def _set_busy(self, on):
-        self.dl_btn.configure(state="disabled" if on else "normal")
+        if on:
+            self.progress_card.grid()
+        self.dl_btn.configure(state="disabled" if on else "normal", text="Baixando…" if on else "Baixar")
         self.cancel_btn.configure(state="normal" if on else "disabled")
 
     # ── Download ───────────────────────────────────────────────
@@ -499,7 +493,7 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
                 n = len(downloaded_titles)
                 self.after(0, lambda: (
                     self.prog_lbl.configure(
-                        text=f"Concluído ✓  ({n} vídeo{'s' if n!=1 else ''})", text_color=GREEN),
+                        text=f"Concluído  ({n} vídeo{'s' if n!=1 else ''})", text_color=GREEN),
                     self.status_lbl.configure(text="", text_color=MUTED),
                     self.proc_pbar.stop(),
                     self.proc_pbar.grid_remove(),

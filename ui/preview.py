@@ -8,7 +8,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from core.downloader import fetch_info, FFMPEG
-from ui.theme        import TEXT, MUTED
+from ui.theme        import TEXT, MUTED, DIM
 
 
 class PreviewMixin:
@@ -24,11 +24,12 @@ class PreviewMixin:
         self._pl_entries  = []
         self.after(0, lambda: (
             self.title_lbl.configure(text="Cole um link para começar", text_color=MUTED),
-            self.meta_lbl.configure(text=""),
-            self.thumb_lbl.configure(image=None, text="🎬"),
+            self.meta_lbl.configure(text="O título, a duração e o canal aparecem aqui.", text_color=DIM),
+            self.thumb_lbl.configure(image=None, text="▶"),
             self._pl_banner.grid_remove(),
         ))
         self._img_ref = None
+        self._hide_progress_idle()
         if len(url) < 16:
             return
         if hasattr(self, "_preview_after"):
@@ -85,7 +86,7 @@ class PreviewMixin:
         pl_title = info.get("title", "Playlist")
         ch       = info.get("uploader") or info.get("channel", "")
         short    = pl_title[:70] + ("…" if len(pl_title) > 70 else "")
-        meta     = f"📋 Playlist  ·  {count} vídeo{'s' if count != 1 else ''}   📺 {ch[:30]}"
+        meta     = f"Playlist  ·  {count} vídeo{'s' if count != 1 else ''}  ·  {ch[:30]}"
         thumb    = info.get("thumbnail", "")
         if not thumb and entries:
             thumb = entries[0].get("thumbnail", "") if entries[0] else ""
@@ -103,7 +104,7 @@ class PreviewMixin:
         ch    = info.get("uploader") or info.get("channel", "")
         thumb = info.get("thumbnail", "")
         m, s  = divmod(dur, 60)
-        meta  = f"⏱ {m}:{s:02d}   👁 {f'{views:,}'.replace(',', '.')}   📺 {ch[:30]}"
+        meta  = f"{m}:{s:02d}  ·  {f'{views:,}'.replace(',', '.')} visualizações  ·  {ch[:30]}"
         short = title[:70] + ("…" if len(title) > 70 else "")
         return short, meta, thumb
 
@@ -112,8 +113,8 @@ class PreviewMixin:
             req  = urllib.request.Request(thumb_url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as r:
                 data = r.read()
-            img  = Image.open(io.BytesIO(data)).convert("RGB").resize((200, 113), Image.LANCZOS)
-            cimg = ctk.CTkImage(light_image=img, dark_image=img, size=(200, 113))
+            img  = Image.open(io.BytesIO(data)).convert("RGB").resize((192, 108), Image.LANCZOS)
+            cimg = ctk.CTkImage(light_image=img, dark_image=img, size=(192, 108))
             self._img_ref = cimg
             self.after(0, lambda i=cimg: self.thumb_lbl.configure(image=i, text=""))
         except Exception:

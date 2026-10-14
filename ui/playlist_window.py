@@ -4,8 +4,8 @@
 import customtkinter as ctk
 from tkinter import messagebox
 
-from ui.theme import (BG, SURFACE, CARD, BORDER, BLUE, BLUE_H,
-                      TEXT, MUTED, GREEN, RED, ORANGE)
+from ui.theme import (BG, SURFACE, CARD, CARD_HI, BORDER, ACCENT, ACCENT_H, ACCENT_SOFT,
+                      TEXT, MUTED, DIM, GREEN, RED, ORANGE, font, mono)
 
 
 class PlaylistSelectorWindow(ctk.CTkToplevel):
@@ -16,60 +16,49 @@ class PlaylistSelectorWindow(ctk.CTkToplevel):
 
     def __init__(self, parent, entries, pl_title, callback):
         super().__init__(parent)
+        self.attributes("-alpha", 0.0)
         self.entries  = entries
         self.callback = callback
         self._checks  = []
 
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        ww = min(720, int(sw * 0.55))
-        wh = min(620, int(sh * 0.80))
-        self.geometry(f"{ww}x{wh}+{(sw-ww)//2}+{(sh-wh)//2}")
-        self.title("Selecionar vídeos da playlist")
+        ww = min(760, int(sw * 0.6))
+        wh = min(660, int(sh * 0.82))
+        self.geometry(f"{ww}x{wh}+{(sw-ww)//2}+{(sh-wh)//3}")
+        self.title("Escolher vídeos da playlist")
         self.configure(fg_color=BG)
         self.resizable(True, True)
-        self.grab_set()
         self._build(pl_title, ww)
+        self.update_idletasks()
+        self.attributes("-alpha", 1.0)
+        self.after(50, self.grab_set)
 
     def _build(self, pl_title, ww):
-        # Header
-        hdr = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=56)
+        hdr = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=64)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text="Escolher vídeos", font=font(16, "bold"), text_color=TEXT,
+        ).pack(side="left", padx=(22, 12))
+        ctk.CTkLabel(hdr, text=pl_title[:60] + ("…" if len(pl_title) > 60 else ""),
+            font=font(12), text_color=MUTED,
+        ).pack(side="left")
 
-        ctk.CTkLabel(hdr, text="📋  Selecionar vídeos",
-            font=ctk.CTkFont(size=15, weight="bold"), text_color=TEXT,
-        ).pack(side="left", padx=16, pady=14)
-
-        ctk.CTkLabel(hdr,
-            text=pl_title[:55] + ("…" if len(pl_title) > 55 else ""),
-            font=ctk.CTkFont(size=11), text_color=MUTED,
-        ).pack(side="left", padx=(0, 16), pady=14)
-
-        # Toolbar
-        toolbar = ctk.CTkFrame(self, fg_color=CARD, corner_radius=0, height=42)
+        toolbar = ctk.CTkFrame(self, fg_color=BG, corner_radius=0, height=52)
         toolbar.pack(fill="x")
         toolbar.pack_propagate(False)
-
-        ctk.CTkButton(toolbar, text="✔  Selecionar tudo",
-            width=145, height=28, fg_color=BLUE, hover_color=BLUE_H,
-            font=ctk.CTkFont(size=12), corner_radius=6,
-            command=self._select_all,
-        ).pack(side="left", padx=(12, 6), pady=7)
-
-        ctk.CTkButton(toolbar, text="✕  Desmarcar tudo",
-            width=145, height=28, fg_color=BORDER, hover_color="#3d1515",
-            font=ctk.CTkFont(size=12), corner_radius=6,
-            command=self._deselect_all,
-        ).pack(side="left", padx=(0, 12), pady=7)
-
+        ctk.CTkButton(toolbar, text="Selecionar tudo", width=130, height=32, font=font(12),
+            fg_color=CARD_HI, hover_color=BORDER, text_color=TEXT, corner_radius=8,
+            command=self._select_all).pack(side="left", padx=(18, 8), pady=10)
+        ctk.CTkButton(toolbar, text="Desmarcar tudo", width=130, height=32, font=font(12),
+            fg_color="transparent", hover_color=CARD_HI, border_width=1, border_color=BORDER,
+            text_color=TEXT, corner_radius=8, command=self._deselect_all).pack(side="left", pady=10)
         self._count_lbl = ctk.CTkLabel(toolbar,
             text=f"{len(self.entries)} de {len(self.entries)} selecionados",
-            font=ctk.CTkFont(size=11), text_color=MUTED)
-        self._count_lbl.pack(side="left", padx=4)
+            font=font(12, "bold"), text_color=GREEN)
+        self._count_lbl.pack(side="right", padx=22)
 
-        # Lista rolável
         sf = ctk.CTkScrollableFrame(self, fg_color=BG, scrollbar_button_color=BORDER)
-        sf.pack(fill="both", expand=True)
+        sf.pack(fill="both", expand=True, padx=10)
         sf.grid_columnconfigure(0, weight=1)
 
         for idx, entry in enumerate(self.entries):
@@ -77,49 +66,37 @@ class PlaylistSelectorWindow(ctk.CTkToplevel):
             var.trace_add("write", lambda *_, v=var: self._update_count())
             self._checks.append(var)
 
-            row = ctk.CTkFrame(sf, fg_color=CARD if idx % 2 == 0 else SURFACE, corner_radius=6)
-            row.grid(row=idx, column=0, sticky="ew", padx=8, pady=2)
+            row = ctk.CTkFrame(sf, fg_color=CARD, corner_radius=8, border_width=1, border_color=BORDER)
+            row.grid(row=idx, column=0, sticky="ew", padx=6, pady=3)
             row.grid_columnconfigure(1, weight=1)
 
-            ctk.CTkLabel(row, text=f"{idx+1:02d}",
-                font=ctk.CTkFont(family="Courier New", size=11),
-                text_color=MUTED, width=28, anchor="e",
-            ).grid(row=0, column=0, padx=(10, 6), pady=8, sticky="e")
+            ctk.CTkLabel(row, text=f"{idx+1:02d}", font=mono(12), text_color=DIM, width=30, anchor="e",
+            ).grid(row=0, column=0, padx=(12, 8), pady=10, sticky="e")
 
-            title = (entry.get("title") or entry.get("url") or f"Vídeo {idx+1}")[:70]
-            ctk.CTkLabel(row, text=title,
-                font=ctk.CTkFont(size=12), text_color=TEXT,
-                anchor="w", wraplength=max(ww - 200, 300),
-            ).grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=8)
+            title = (entry.get("title") or entry.get("url") or f"Vídeo {idx+1}")[:72]
+            ctk.CTkLabel(row, text=title, font=font(13), text_color=TEXT, anchor="w",
+                wraplength=max(ww - 220, 300),
+            ).grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=10)
 
             dur     = int(entry.get("duration", 0) or 0)
             dur_str = f"{dur//60}:{dur%60:02d}" if dur else "—"
-            ctk.CTkLabel(row, text=dur_str,
-                font=ctk.CTkFont(family="Courier New", size=10),
-                text_color=MUTED, width=42, anchor="e",
-            ).grid(row=0, column=2, padx=(0, 8), pady=8, sticky="e")
+            ctk.CTkLabel(row, text=dur_str, font=mono(12), text_color=MUTED, width=46, anchor="e",
+            ).grid(row=0, column=2, padx=(0, 8), pady=10, sticky="e")
 
-            ctk.CTkCheckBox(row, text="", variable=var,
-                width=24, height=24, checkmark_color=BG,
-                hover_color=BLUE, fg_color=BLUE, border_color=MUTED,
-            ).grid(row=0, column=3, padx=(0, 10), pady=8)
+            ctk.CTkCheckBox(row, text="", variable=var, width=24, height=24, checkbox_width=22,
+                checkbox_height=22, corner_radius=6, checkmark_color="#ffffff",
+                hover_color=ACCENT_H, fg_color=ACCENT, border_color=DIM,
+            ).grid(row=0, column=3, padx=(0, 12), pady=10)
 
-        # Footer
-        footer = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=58)
+        footer = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=68)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
-
-        ctk.CTkButton(footer, text="⬇  Baixar selecionados",
-            height=38, fg_color=BLUE, hover_color=BLUE_H,
-            font=ctk.CTkFont(size=13, weight="bold"), corner_radius=8,
-            command=self._confirm,
-        ).pack(side="right", padx=14, pady=10)
-
-        ctk.CTkButton(footer, text="Cancelar",
-            height=38, width=90, fg_color=BORDER, hover_color="#3d1515",
-            font=ctk.CTkFont(size=12), corner_radius=8,
-            command=self.destroy,
-        ).pack(side="right", padx=(0, 6), pady=10)
+        ctk.CTkButton(footer, text="Baixar selecionados", height=42, width=190, font=font(14, "bold"),
+            fg_color=ACCENT, hover_color=ACCENT_H, text_color="#ffffff", corner_radius=10,
+            command=self._confirm).pack(side="right", padx=(8, 20), pady=13)
+        ctk.CTkButton(footer, text="Cancelar", height=42, width=100, font=font(13),
+            fg_color="transparent", hover_color=CARD_HI, border_width=1, border_color=BORDER,
+            text_color=TEXT, corner_radius=10, command=self.destroy).pack(side="right", pady=13)
 
     def _select_all(self):
         for v in self._checks:

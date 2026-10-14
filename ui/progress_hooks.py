@@ -6,7 +6,7 @@ import os
 import yt_dlp
 
 from core.setup import clean
-from ui.theme   import TEXT, MUTED, BLUE, GREEN, ORANGE
+from ui.theme   import TEXT, MUTED, TEAL, GREEN, ORANGE
 
 
 class ProgressMixin:
@@ -21,7 +21,9 @@ class ProgressMixin:
         self._pl_total      = 0
         self._pl_done       = 0
         self._last_finished = None
-        self.prog_lbl.configure(text="Iniciando...", text_color=TEXT)
+        self.prog_lbl.configure(text="Iniciando…", text_color=TEXT)
+        self.vid_prog_lbl.grid_remove()
+        self.vid_pbar.grid_remove()
         self.speed_lbl.configure(text="")
         self.status_lbl.configure(text="", text_color=MUTED)
         self.pl_count_lbl.configure(text="")
@@ -49,12 +51,14 @@ class ProgressMixin:
             self._hook_finished(d)
 
     def _hook_downloading(self, d):
+        if self._pl_total > 1:            # em playlist, mostra também o progresso do vídeo atual
+            self.after(0, lambda: (self.vid_prog_lbl.grid(), self.vid_pbar.grid()))
         raw = clean(d.get("_percent_str", "0%")).replace("%", "")
         try:
             pct = float(raw)
             self.after(0, lambda p=pct: (
                 self.vid_pbar.set(p / 100),
-                self.vid_prog_lbl.configure(text=f"Vídeo atual: {p:.1f}%", text_color=BLUE),
+                self.vid_prog_lbl.configure(text=f"Vídeo atual: {p:.1f}%", text_color=TEAL),
             ))
         except Exception:
             pct = 0
@@ -81,7 +85,7 @@ class ProgressMixin:
                 self.pbar.set(o),
                 self.prog_lbl.configure(text=f"Vídeo {d} de {t}", text_color=TEXT),
                 self.pl_count_lbl.configure(
-                    text=f"⏳ Faltam {f} vídeo{'s' if f!=1 else ''}", text_color=ORANGE),
+                    text=f"Faltam {f} vídeo{'s' if f!=1 else ''}", text_color=ORANGE),
             ))
         else:
             try:
@@ -123,8 +127,8 @@ class ProgressMixin:
                 text=f"Vídeo {dn} de {t}" if t > 1 else "Baixando...",
                 text_color=TEXT),
             self.pl_count_lbl.configure(
-                text=f"⏳ Faltam {f} vídeo{'s' if f!=1 else ''}" if t > 1 and f > 0
-                     else ("✓ Todos baixados!" if t > 1 else ""),
+                text=f"Faltam {f} vídeo{'s' if f!=1 else ''}" if t > 1 and f > 0
+                     else ("Todos baixados" if t > 1 else ""),
                 text_color=GREEN if f == 0 else ORANGE),
             self.speed_lbl.configure(text=""),
             self.vid_prog_lbl.configure(text=""),

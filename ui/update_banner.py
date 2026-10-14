@@ -7,34 +7,41 @@
 import customtkinter as ctk
 
 from core.config import APP_NAME
-from ui.theme import CARD, BORDER, BLUE, BLUE_H, TEXT, MUTED, RED
+from ui.theme import SURFACE, CARD_HI, BORDER, ACCENT, ACCENT_H, TEAL, TEXT, MUTED, RED, font
 
 
 class UpdateBanner(ctk.CTkFrame):
     def __init__(self, master, on_update, on_later):
-        super().__init__(master, fg_color=CARD, corner_radius=0, border_width=1, border_color=BLUE)
+        super().__init__(master, fg_color=SURFACE, corner_radius=0)
         self._on_update = on_update
         self._on_later = on_later
-        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+
+        # Linha fina na cor da marca, no topo da faixa.
+        ctk.CTkFrame(self, fg_color=ACCENT, height=2, corner_radius=0).grid(row=0, column=0, columnspan=3, sticky="ew")
+
+        dot = ctk.CTkFrame(self, fg_color=TEAL, width=10, height=10, corner_radius=5)
+        dot.grid(row=1, column=0, padx=(24, 12), pady=16)
 
         text = ctk.CTkFrame(self, fg_color="transparent")
-        text.grid(row=0, column=0, sticky="w", padx=(18, 8), pady=10)
-        self.title = ctk.CTkLabel(text, text="", font=ctk.CTkFont(size=13, weight="bold"), text_color=TEXT, anchor="w")
+        text.grid(row=1, column=1, sticky="w", pady=12)
+        self.title = ctk.CTkLabel(text, text="", font=font(13, "bold"), text_color=TEXT, anchor="w")
         self.title.pack(anchor="w")
-        self.detail = ctk.CTkLabel(text, text="", font=ctk.CTkFont(size=11), text_color=MUTED, anchor="w", justify="left")
+        self.detail = ctk.CTkLabel(text, text="", font=font(11), text_color=MUTED, anchor="w", justify="left")
         self.detail.pack(anchor="w")
 
-        self.bar = ctk.CTkProgressBar(self, width=200, height=6, corner_radius=3, progress_color=BLUE, fg_color=BORDER)
+        self.bar = ctk.CTkProgressBar(self, width=220, height=8, corner_radius=4, progress_color=TEAL, fg_color=BORDER)
         self.bar.set(0)
 
         self.buttons = ctk.CTkFrame(self, fg_color="transparent")
         self.later_btn = ctk.CTkButton(
-            self.buttons, text="Depois", width=80, height=32, fg_color=BORDER, hover_color="#2a2a42",
-            corner_radius=6, command=self._on_later,
+            self.buttons, text="Depois", width=84, height=34, font=font(12), fg_color="transparent",
+            hover_color=CARD_HI, border_width=1, border_color=BORDER, text_color=TEXT,
+            corner_radius=8, command=self._on_later,
         )
         self.update_btn = ctk.CTkButton(
-            self.buttons, text="Atualizar agora", width=130, height=32, fg_color=BLUE, hover_color=BLUE_H,
-            corner_radius=6, font=ctk.CTkFont(size=12, weight="bold"), command=self._on_update,
+            self.buttons, text="Atualizar agora", width=140, height=34, fg_color=ACCENT, hover_color=ACCENT_H,
+            text_color="#ffffff", corner_radius=8, font=font(12, "bold"), command=self._on_update,
         )
         self.later_btn.pack(side="left", padx=(0, 8))
         self.update_btn.pack(side="left")
@@ -44,20 +51,21 @@ class UpdateBanner(ctk.CTkFrame):
         for w in (self.bar, self.buttons):
             w.grid_remove()
         if "bar" in widgets:
-            self.bar.grid(row=0, column=1, padx=(0, 18))
+            self.bar.grid(row=1, column=2, padx=(0, 24))
         if "buttons" in widgets:
-            self.buttons.grid(row=0, column=1, padx=(0, 18))
+            self.buttons.grid(row=1, column=2, padx=(0, 24))
 
     def show_available(self, version, notes):
         self.title.configure(text=f"{APP_NAME} {version} está disponível", text_color=TEXT)
         self.detail.configure(text="  ·  ".join(notes) if notes else "Uma versão nova, pronta para instalar.")
-        self.update_btn.configure(state="normal")
+        self.update_btn.configure(text="Atualizar agora", state="normal")
         self._place(["buttons"])
         self.grid()
 
     def show_downloading(self, fraction=0.0):
         self.title.configure(text="Baixando a atualização…", text_color=TEXT)
         self.detail.configure(text=f"{int(fraction * 100)}%")
+        self.bar.configure(mode="determinate")
         self.bar.set(fraction)
         self._place(["bar"])
 
