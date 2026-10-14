@@ -21,7 +21,7 @@ def open_history_window(parent, history):
 
     w = ctk.CTkToplevel(parent)
     parent._hist_win = w
-    w.title("Histórico — OffTube")
+    w.title("Histórico — Kyra Tube")
     w.configure(fg_color=BG)
     w.geometry(f"{ww}x{wh}+{(sw-ww)//2}+{(sh-wh)//2}")
     w.grab_set()

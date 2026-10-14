@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  ui/theme.py — Paleta de cores e configuração visual do OffTube
+#  ui/theme.py — Paleta de cores e configuração visual do Kyra Tube
 #  ► Altere as cores aqui para mudar todo o visual do app
 # ═══════════════════════════════════════════════════════════════
 import customtkinter as ctk

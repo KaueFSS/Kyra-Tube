@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-#  ui/app.py — Janela principal do OffTube
+#  ui/app.py — Janela principal do Kyra Tube
 #  ► Layout / widgets: edite os métodos _build_*()
 #  ► Progresso: ui/progress_hooks.py
 #  ► Preview:   ui/preview.py
@@ -13,12 +13,11 @@ from tkinter  import filedialog, messagebox
 import customtkinter as ctk
 import yt_dlp
 
-from core.config     import APP_VERSION, UPDATE_CHECK_INTERVAL
+from core.config     import APP_NAME, APP_VERSION, GITHUB_USER, GITHUB_REPO, UPDATE_CHECK_INTERVAL
 from core.history    import load_hist, save_hist
 from core.downloader import build_opts, run_download, FFMPEG
-from core.setup      import IS_FROZEN
-from core.updater    import fetch_release, download_exe, apply_update, is_newer
-from core            import discord as dc
+from core.setup      import IS_FROZEN, resource_path
+from core            import updater
 from ui.theme        import (BG, SURFACE, CARD, BORDER,
                               BLUE, BLUE_H, TEXT, MUTED,
                               GREEN, RED, YELLOW, ORANGE, PURPLE)
@@ -26,6 +25,7 @@ from ui.progress_hooks  import ProgressMixin
 from ui.preview         import PreviewMixin
 from ui.playlist_window import PlaylistSelectorWindow
 from ui.history_window  import open_history_window
+from ui.update_banner   import UpdateBanner
 
 
 class App(ProgressMixin, PreviewMixin, ctk.CTk):
@@ -33,7 +33,8 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
     def __init__(self):
         ctk.CTk.__init__(self)
         self.configure(fg_color=BG)
-        self.title("OffTube")
+        self.title(APP_NAME)
+        self._set_window_icon()
         self.resizable(True, True)
 
         # Variáveis de controle
@@ -64,7 +65,6 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self._fit_screen()
         self.url_v.trace_add("write", self._url_changed)
         self.after(500, self._start_update_check)
-        threading.Thread(target=dc.send_open, daemon=True).start()
 
     # ── Tamanho ─────────────────────────────────────────────────
     def _fit_screen(self):
@@ -74,47 +74,88 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
         self.minsize(1000, 600)
 
-    # ── Auto-atualização ────────────────────────────────────────
-    def _start_update_check(self):
-        threading.Thread(target=self._check_update, daemon=True).start()
-        threading.Thread(target=self._update_loop,  daemon=True).start()
+    # ── Ícone da janela ─────────────────────────────────────────
+    def _set_window_icon(self):
+        ico = resource_path("assets/kyra-tube.ico")
+        # O customtkinter troca o ícone logo ao abrir; por isso o atraso.
+        self.after(250, lambda: self._safe(lambda: self.iconbitmap(str(ico))))
 
-    def _check_update(self):
+    @staticmethod
+    def _safe(fn):
+        try:
+            fn()
+        except Exception:
+            pass
+
+    # ── Atualizações ────────────────────────────────────────────
+    # Só no app instalado. O aviso aparece embaixo e a pessoa decide;
+    # nada é baixado ou instalado sem o clique em "Atualizar agora".
+    def _start_update_check(self):
         if not IS_FROZEN:
-            self.after(0, lambda: self._set_update_lbl(f"● {APP_VERSION} (Dev)", MUTED))
+            self._set_update_lbl(f"● {APP_VERSION} (dev)", MUTED)
             return
-        self.after(0, lambda: self._set_update_lbl(f"● {APP_VERSION}  verificando...", MUTED))
-        dl_url, tag, _ = fetch_release()
-        if not tag or not dl_url:
-            self.after(0, lambda: self._set_update_lbl(f"● {APP_VERSION}", MUTED))
+        self._pending_release = None
+        self._dismissed = None
+        threading.Thread(target=self._check_update, kwargs={"silent": True}, daemon=True).start()
+        threading.Thread(target=self._update_loop, daemon=True).start()
+
+    def _manual_update_check(self):
+        if not IS_FROZEN:
+            self._set_update_lbl(f"● {APP_VERSION} (dev)", MUTED)
             return
-        if is_newer(tag):
-            self.after(0, lambda: self._set_update_lbl(f"⟳ Atualizando para {tag}...", ORANGE))
-            exe_bytes = download_exe(dl_url, progress_cb=lambda r: self.after(
-                0, lambda p=int(r*100): self._set_update_lbl(f"⬇ Baixando {p}%...", YELLOW)))
-            if exe_bytes:
-                self.after(0, lambda: self._set_update_lbl("🔄 Aplicando... reiniciando!", YELLOW))
-                threading.Thread(target=dc.send_updated, daemon=True).start()
-                time.sleep(0.8)
-                apply_update(exe_bytes)
-            else:
-                self.after(0, lambda: self._set_update_lbl("✗ Falha no download", RED))
-        else:
-            self.after(0, lambda: self._set_update_lbl(f"✓ {tag} (atual)", GREEN))
+        self._set_update_lbl("verificando…", MUTED)
+        self._dismissed = None
+        threading.Thread(target=self._check_update, kwargs={"silent": False}, daemon=True).start()
+
+    def _check_update(self, silent=True):
+        release = updater.fetch_latest()
+        if release and updater.is_newer(release.version):
+            if release.version == self._dismissed:
+                return
+            self._pending_release = release
+            self.after(0, lambda: (
+                self._set_update_lbl(f"● {APP_VERSION}  ·  {release.version} disponível", ORANGE),
+                self.update_banner.show_available(release.version, release.notes),
+            ))
+        elif not silent:
+            msg = f"✓ {APP_VERSION}  ·  você está na versão mais recente" if release else "Sem conexão com o GitHub"
+            self.after(0, lambda: self._set_update_lbl(msg, GREEN if release else RED))
+            self.after(5000, lambda: self._set_update_lbl(f"● {APP_VERSION}", MUTED))
 
     def _update_loop(self):
         while True:
             time.sleep(UPDATE_CHECK_INTERVAL)
             try:
-                self._check_update()
+                self._check_update(silent=True)
             except Exception:
                 pass
 
-    def _set_update_lbl(self, text, color):
+    def _update_later(self):
+        if self._pending_release:
+            self._dismissed = self._pending_release.version
+        self.update_banner.grid_remove()
+
+    def _update_now(self):
+        release = self._pending_release
+        if not release:
+            return
+        self.update_banner.show_downloading(0.0)
+        threading.Thread(target=self._download_and_install, args=(release,), daemon=True).start()
+
+    def _download_and_install(self, release):
         try:
-            self.update_lbl.configure(text=text, text_color=color)
-        except Exception:
-            pass
+            path = updater.download(
+                release, progress=lambda f: self.after(0, lambda v=f: self.update_banner.show_downloading(v)))
+        except updater.UpdateError as exc:
+            self.after(0, lambda: self.update_banner.show_error(str(exc)))
+            return
+        self.after(0, self.update_banner.show_installing)
+        time.sleep(0.8)
+        updater.launch_installer(path)
+        updater.exit_now()
+
+    def _set_update_lbl(self, text, color):
+        self._safe(lambda: self.update_lbl.configure(text=text, text_color=color))
 
     # ── Build ───────────────────────────────────────────────────
     def _build(self):
@@ -128,8 +169,11 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self._build_checkboxes(body)
         self._build_progress(body)
         self._build_buttons(body)
+        self.update_banner = UpdateBanner(self, on_update=self._update_now, on_later=self._update_later)
+        self.update_banner.grid(row=2, column=0, sticky="ew")
+        self.update_banner.grid_remove()
         ctk.CTkLabel(body,
-            text="OffTube  ·  yt-dlp  ·  FFmpeg embutido  ·  KaueFSS",
+            text="Kyra Tube  ·  yt-dlp  ·  FFmpeg embutido  ·  por Kauê (@KaueFSS)",
             font=ctk.CTkFont(size=10), text_color=BORDER,
         ).grid(row=6, column=0, pady=(4, 10))
 
@@ -138,25 +182,37 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         top.grid(row=0, column=0, sticky="ew")
         top.grid_propagate(False)
         top.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(top, text="Off",
-            font=ctk.CTkFont(family="Courier New", size=18, weight="bold"),
-            text_color=TEXT).grid(row=0, column=0, padx=(18, 0), pady=14, sticky="w")
-        ctk.CTkLabel(top, text="Tube",
-            font=ctk.CTkFont(family="Courier New", size=18, weight="bold"),
-            text_color=BLUE).grid(row=0, column=1, pady=14, sticky="w")
+        self._logo_img = self._load_logo()
+        brand = ctk.CTkFrame(top, fg_color="transparent")
+        brand.grid(row=0, column=0, padx=(16, 0), sticky="w")
+        if self._logo_img:
+            ctk.CTkLabel(brand, text="", image=self._logo_img).pack(side="left", padx=(0, 8), pady=10)
+        ctk.CTkLabel(brand, text="Kyra",
+            font=ctk.CTkFont(size=18, weight="bold"), text_color=TEXT).pack(side="left")
+        ctk.CTkLabel(brand, text=" Tube",
+            font=ctk.CTkFont(size=18, weight="bold"), text_color=BLUE).pack(side="left")
         right = ctk.CTkFrame(top, fg_color="transparent")
         right.grid(row=0, column=2, padx=14, sticky="e")
-        ctk.CTkLabel(right, text="by KaueFSS",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=TEXT).pack(side="left", padx=(0, 12))
         self.update_lbl = ctk.CTkLabel(right, text=f"● {APP_VERSION}",
             font=ctk.CTkFont(size=11), text_color=MUTED)
-        self.update_lbl.pack(side="left", padx=(0, 12))
+        self.update_lbl.pack(side="left", padx=(0, 10))
+        ctk.CTkButton(right, text="Atualizações", width=96, height=28,
+            font=ctk.CTkFont(size=11), fg_color=BORDER, hover_color="#2a2a42",
+            corner_radius=5, command=self._manual_update_check,
+        ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(right, text="GitHub ↗", width=80, height=28,
             font=ctk.CTkFont(size=11), fg_color=BORDER, hover_color="#2a2a42",
             corner_radius=5,
-            command=lambda: webbrowser.open("https://github.com/KaueFSS"),
+            command=lambda: webbrowser.open(f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}"),
         ).pack(side="left")
+
+    def _load_logo(self):
+        try:
+            from PIL import Image
+            img = Image.open(resource_path("assets/kyra-tube.png"))
+            return ctk.CTkImage(light_image=img, dark_image=img, size=(30, 30))
+        except Exception:
+            return None
 
     def _build_body(self):
         body = ctk.CTkScrollableFrame(self, fg_color=BG, scrollbar_button_color=BORDER)
@@ -335,7 +391,7 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         br = ctk.CTkFrame(body, fg_color="transparent")
         br.grid(row=5, column=0, pady=(10, 4), padx=18, sticky="ew")
         br.grid_columnconfigure(0, weight=1)
-        self.dl_btn = ctk.CTkButton(br, text="⬇  Baixar", height=40,
+        self.dl_btn = ctk.CTkButton(br, text="Baixar", height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color=BLUE, hover_color=BLUE_H, corner_radius=8, command=self._start)
         self.dl_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
@@ -449,11 +505,6 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
                     self.proc_pbar.grid_remove(),
                     self.proc_lbl.grid_remove(),
                 ))
-                threading.Thread(target=dc.send_download,
-                    args=(n, elapsed, downloaded_titles, folder,
-                          self.fmt_v.get(), self.qual_v.get(), self.mp3_qual_v.get(),
-                          self.thumb_v.get(), self.thumb_fmt_v.get()),
-                    daemon=True).start()
                 mins, secs = int(elapsed // 60), int(elapsed % 60)
                 messagebox.showinfo("Pronto",
                     f"{'Download' if n == 1 else f'{n} downloads'} concluído{'s' if n!=1 else ''} "

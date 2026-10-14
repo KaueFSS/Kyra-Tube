@@ -1,14 +1,18 @@
 # ═══════════════════════════════════════════════════════════════
-#  core/setup.py — Auto-instalação de dependências e setup inicial
+#  core/setup.py — Dependências, caminhos e utilidades de arranque
 # ═══════════════════════════════════════════════════════════════
 import sys, os, subprocess, re
 from pathlib import Path
 
 IS_FROZEN = getattr(sys, "frozen", False)
-THIS_FILE  = Path(sys.executable if IS_FROZEN else os.path.abspath(__file__)).parent.parent
-# THIS_FILE aponta para a pasta raiz do projeto (onde está OffTube.py)
-THIS_EXE   = Path(sys.executable if IS_FROZEN else os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', 'OffTube.py')))
+# Pasta raiz do projeto (onde está main.py) ou a pasta do executável.
+ROOT = Path(sys.executable).parent if IS_FROZEN else Path(os.path.abspath(__file__)).parent.parent
+
+
+def resource_path(relative):
+    """Caminho de um arquivo do projeto (ícones etc.), no código-fonte ou no executável."""
+    base = Path(getattr(sys, "_MEIPASS", ROOT))
+    return base / relative
 
 
 def _pip(*pkgs):
@@ -16,7 +20,7 @@ def _pip(*pkgs):
 
 
 def ensure_dependencies():
-    """Instala dependências ausentes quando rodando em modo dev (não frozen)."""
+    """Instala dependências ausentes quando rodando pelo código (não no executável)."""
     if IS_FROZEN:
         return
     for _pkg, _imp in [
