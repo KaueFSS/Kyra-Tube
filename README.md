@@ -47,7 +47,27 @@ Por baixo, usa o [yt-dlp](https://github.com/yt-dlp/yt-dlp) para obter e baixar 
 - **Prévia** com título, duração, visualizações e canal antes de baixar
 - **Progresso** por vídeo e da playlist inteira, com velocidade
 - **Histórico** dos downloads
+- **Avisa quando o vídeo já estava baixado**, em vez de fingir que baixou em 0 segundos
+- **Explica os problemas** (vídeo privado, bloqueado, YouTube pedindo confirmação, internet instável) e diz o que tentar
 - **Atualização automática**, com aviso e barra de progresso, sem janela de terminal
+
+## Quando algo dá errado
+
+Alguns vídeos simplesmente não podem ser baixados (privados, só para membros, bloqueados por direitos autorais ou por região), e às vezes o YouTube bloqueia a sua conexão por um tempo. Em vez de uma mensagem técnica em inglês, o app diz **o que aconteceu, por que costuma acontecer e o que tentar**, na ordem (como reiniciar o roteador para trocar o IP, que resolve muitos desses casos).
+
+<div align="center">
+<img src="docs/screenshots/erro.png" alt="Janela que explica o problema e lista o que tentar" width="62%" />
+</div>
+
+<br />
+
+Quando o arquivo já está na pasta, o app avisa e não baixa de novo:
+
+<div align="center">
+<img src="docs/screenshots/ja-baixado.png" alt="Aviso de que o vídeo já estava baixado" width="80%" />
+</div>
+
+<br />
 
 ## Privacidade
 
@@ -109,18 +129,20 @@ core/                    Lógica, sem interface
   config.py              Nome, versão e endereço das releases
   downloader.py          Opções e execução do yt-dlp
   updater.py             Consulta, download, SHA-256 e instalação da atualização
+  errors.py              Traduz os erros do yt-dlp para o que fazer
   history.py             Histórico (migra o arquivo da época do OffTube)
   setup.py               Dependências, FFmpeg e caminhos
 ui/                      Interface (CustomTkinter)
   app.py                 Janela principal
   update_banner.py       Aviso de atualização
+  error_dialog.py        Janela com o que aconteceu e o que fazer
   preview.py             Prévia do vídeo/playlist
   playlist_window.py     Escolha dos vídeos da playlist
   history_window.py      Janela do histórico
   progress_hooks.py      Progresso do download
 installer/               Script do instalador (Inno Setup)
-scripts/                 build.ps1, release.py, screenshots.py
-tests/                   Testes do atualizador e do histórico
+scripts/                 build.ps1, release.py, screenshots.py, smoke_download.py, smoke_ui.py
+tests/                   Testes do atualizador, do histórico e das mensagens de erro
 .github/workflows/       Testes e publicação das versões
 ```
 
