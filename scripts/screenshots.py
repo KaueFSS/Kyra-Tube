@@ -14,10 +14,13 @@ sys.path.insert(0, str(ROOT))
 
 from PIL import ImageGrab  # noqa: E402
 
+from core.downloader import Result  # noqa: E402
+from core.errors import explain  # noqa: E402
 from ui.theme import apply_theme  # noqa: E402
 
 apply_theme()
 from ui.app import App  # noqa: E402
+from ui.error_dialog import ProblemDialog  # noqa: E402
 
 OUT = ROOT / "docs" / "screenshots"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -27,16 +30,21 @@ app = App()
 app.geometry("1000x690+60+30")
 
 
-def grab(name):
-    """Foto só da região da janela do app, com checagem de que é ela mesma (e não outra coisa na tela)."""
+def grab(name, widget=None):
+    """Foto só da região da janela (ou de um widget), com checagem de que são pixels do app."""
+    target = widget or app
     app.lift()
     app.attributes("-topmost", True)
+    if widget is not None:                     # janela de diálogo: precisa ficar na frente do app
+        widget.attributes("-topmost", True)
+        widget.lift()
     app.update()
-    x, y, w, h = app.winfo_rootx(), app.winfo_rooty(), app.winfo_width(), app.winfo_height()
+    x, y, w, h = target.winfo_rootx(), target.winfo_rooty(), target.winfo_width(), target.winfo_height()
     shot = ImageGrab.grab(bbox=(x, y, x + w, y + h)).convert("RGB")
-    bar = shot.getpixel((w // 2, 12))                 # a barra de cima tem a cor SURFACE
-    if max(abs(bar[0] - 17), abs(bar[1] - 20), abs(bar[2] - 26)) > 6:
-        raise SystemExit(f"A captura não parece ser a janela do app (cor {bar}). Tente de novo.")
+    probe = shot.getpixel((w // 2, 12))
+    known = [(13, 15, 19), (17, 20, 26), (22, 26, 33)]            # BG, SURFACE, CARD: as cores do app
+    if not any(max(abs(probe[i] - c[i]) for i in range(3)) <= 6 for c in known):
+        raise SystemExit(f"A captura não parece ser do app (cor {probe}). Tente de novo.")
     shot.save(OUT / name)
     print("salvo:", OUT / name)
 
@@ -56,20 +64,34 @@ def step_shot_banner():
 def step_shot_window():
     grab("janela.png")
     # Estado "baixando" simulado só para o print (nada é baixado de verdade).
-    app.progress_card.grid()
+    app._reset_prog()
+    app._set_busy(True)
     app.prog_lbl.configure(text="Baixando…  42,3%")
     app.speed_lbl.configure(text="4,8 MiB/s  ·  ETA 00:21")
     app.pbar.set(0.423)
     app.status_lbl.configure(text="Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film.mp4")
-    app.vid_prog_lbl.configure(text="")
-    app.vid_pbar.set(0)
-    app.dl_btn.configure(state="disabled", text="Baixando…")
-    app.cancel_btn.configure(state="normal")
-    app.after(800, step_shot_progress)
+    app.after(900, step_shot_progress)
 
 
 def step_shot_progress():
     grab("baixando.png")
+    # Já estava baixado.
+    app._finish([Result("Big Buck Bunny", already=True, path="C:/Users/voce/Downloads/Big Buck Bunny.mp4")], [], 0.4, False)
+    app.after(900, step_shot_already)
+
+
+def step_shot_already():
+    grab("ja-baixado.png")
+    # Erro explicado, aberto sobre a janela.
+    raw = "ERROR: [youtube] abc123: Sign in to confirm you're not a bot"
+    app._dialog = ProblemDialog(app, explain(raw), details="[youtube] abc123: Sign in to confirm you're not a bot",
+                                on_retry=lambda: None)
+    app.after(1300, step_shot_error)
+
+
+def step_shot_error():
+    grab("erro.png", widget=app._dialog)
+    app._dialog.destroy()
     app.destroy()
 
 
