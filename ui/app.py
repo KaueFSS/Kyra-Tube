@@ -19,6 +19,7 @@ import yt_dlp
 from core.config     import APP_NAME, APP_VERSION, GITHUB_USER, GITHUB_REPO, UPDATE_CHECK_INTERVAL
 from core.history    import load_hist, save_hist
 from core.downloader import build_opts, run_download, FFMPEG
+from core.errors     import explain, short_reason
 from core.setup      import IS_FROZEN, resource_path
 from core            import updater
 from ui.theme        import (BG, SURFACE, CARD, CARD_HI, BORDER, ACCENT, ACCENT_H, ACCENT_SOFT, TEAL,
@@ -28,6 +29,7 @@ from ui.preview         import PreviewMixin
 from ui.playlist_window import PlaylistSelectorWindow
 from ui.history_window  import open_history_window
 from ui.update_banner   import UpdateBanner
+from ui.error_dialog    import ProblemDialog
 
 VIDEO_QUALITIES = ["360p", "480p", "720p", "1080p", "4K", "Melhor"]
 MP3_QUALITIES   = ["320k", "256k", "192k", "128k", "96k"]
@@ -66,10 +68,13 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self._is_playlist   = False
         self._pending_release = None
         self._dismissed     = None
+        self._resize_job    = None
+        self._problem       = None      # (Problem, texto técnico) do último erro de preview
         self.history        = load_hist()
 
         self._build()
         self.url_v.trace_add("write", self._url_changed)
+        self.bind("<Configure>", self._on_configure, add="+")
         self._reveal()
 
     # ── Abrir pronta ────────────────────────────────────────────
@@ -78,16 +83,36 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self.update_idletasks()
         self._fit_screen()
         self.update_idletasks()
+        self._apply_size()
+        self.update_idletasks()
         self.attributes("-alpha", 1.0)
         self._set_window_icon()
         self.after(600, self._start_update_check)
+
+    # ── Redimensionar sem travar ─────────────────────────────────
+    # O customtkinter redesenha dezenas de widgets arredondados a cada pixel
+    # arrastado (≈250 ms por quadro). Por isso o conteúdo fica num quadro de
+    # tamanho fixo que só é ajustado quando a pessoa para de arrastar: a borda
+    # da janela acompanha o mouse na hora, e o conteúdo se acomoda em seguida.
+    def _on_configure(self, event):
+        if event.widget is not self:
+            return
+        if self._resize_job:
+            self.after_cancel(self._resize_job)
+        self._resize_job = self.after(90, self._apply_size)
+
+    def _apply_size(self):
+        self._resize_job = None
+        scale = self._get_window_scaling()
+        w, h = max(int(self.winfo_width() / scale), 1), max(int(self.winfo_height() / scale), 1)
+        self.shell.configure(width=w, height=h)
 
     def _fit_screen(self):
         scale = self._get_window_scaling()           # telas com zoom (125%, 150%...)
         sw, sh = self.winfo_screenwidth() / scale, self.winfo_screenheight() / scale
         w = min(1000, int(sw * 0.82))
-        h = min(690, int(sh * 0.90))
-        self.minsize(min(860, w), min(580, h))
+        h = min(640, int(sh * 0.90))
+        self.minsize(min(860, w), min(540, h))
         self.geometry(f"{w}x{h}+{(sw - w) // 2}+{max((sh - h) // 3, 0)}")
 
     def _set_window_icon(self):
@@ -173,21 +198,24 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
 
     # ── Construção da interface ─────────────────────────────────
     def _build(self):
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.shell = ctk.CTkFrame(self, fg_color=BG, corner_radius=0, width=1000, height=640)
+        self.shell.grid_propagate(False)                          # o tamanho vem de _apply_size(), não dos filhos
+        self.shell.place(x=0, y=0)
+        self.shell.grid_columnconfigure(0, weight=1)
+        self.shell.grid_rowconfigure(1, weight=1)
         self._build_topbar()
-        body = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
+        body = ctk.CTkFrame(self.shell, fg_color=BG, corner_radius=0)
         body.grid(row=1, column=0, sticky="nsew", padx=PAD, pady=(14, 0))
         body.grid_columnconfigure(0, weight=1)
         self._build_url_row(body)            # linha 0
         self._build_preview_area(body)       # linha 1
-        self._build_options(body)            # linha 2
+        self._build_options(body)            # linha 2 (opções OU progresso do download)
         self._build_buttons(body)            # linha 3
-        self._build_progress(body)           # linha 4
+        self._build_progress(body)           # linha 2, no lugar das opções enquanto baixa
         ctk.CTkLabel(body, text="Kyra Tube  ·  yt-dlp  ·  FFmpeg embutido  ·  por Kauê (@KaueFSS)",
             font=font(10), text_color=DIM,
-        ).grid(row=5, column=0, pady=(6, 8))
-        self.update_banner = UpdateBanner(self, on_update=self._update_now, on_later=self._update_later)
+        ).grid(row=4, column=0, pady=(8, 10))
+        self.update_banner = UpdateBanner(self.shell, on_update=self._update_now, on_later=self._update_later)
         self.update_banner.grid(row=2, column=0, sticky="ew")
         self.update_banner.grid_remove()
 
@@ -198,7 +226,7 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         return f
 
     def _build_topbar(self):
-        top = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0, height=52)
+        top = ctk.CTkFrame(self.shell, fg_color=SURFACE, corner_radius=0, height=52)
         top.grid(row=0, column=0, sticky="ew")
         top.grid_propagate(False)
         top.grid_columnconfigure(1, weight=1)
@@ -215,7 +243,7 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self.update_lbl.pack(side="left", padx=(0, 12))
         self._ghost_btn(right, "Atualizações", self._manual_update_check).pack(side="left", padx=(0, 8))
         self._ghost_btn(right, "GitHub ↗", lambda: webbrowser.open(f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}")).pack(side="left")
-        ctk.CTkFrame(self, fg_color=BORDER, height=1, corner_radius=0).place(x=0, y=52, relwidth=1)
+        ctk.CTkFrame(self.shell, fg_color=BORDER, height=1, corner_radius=0).place(x=0, y=52, relwidth=1)
 
     def _ghost_btn(self, parent, text, command, width=0, height=32):
         return ctk.CTkButton(parent, text=text, height=height, width=width or 10, font=font(12),
@@ -255,7 +283,10 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         tc = ctk.CTkFrame(card, fg_color=BG, corner_radius=10, width=192, height=108)
         tc.grid(row=0, column=0, padx=12, pady=12, sticky="w")
         tc.grid_propagate(False)
-        self.thumb_lbl = ctk.CTkLabel(tc, text="▶", font=font(26), text_color=DIM,
+        # Imagem vazia em vez de image=None: o customtkinter guarda uma referência velha e dá TclError ao limpar a capa.
+        from PIL import Image
+        self._blank_img = ctk.CTkImage(Image.new("RGBA", (1, 1), (0, 0, 0, 0)), size=(1, 1))
+        self.thumb_lbl = ctk.CTkLabel(tc, text="▶", image=self._blank_img, font=font(26), text_color=DIM,
             width=192, height=108, fg_color="transparent")
         self.thumb_lbl.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -276,8 +307,15 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         ).grid(row=0, column=0, padx=12, pady=7)
         self._pl_banner.grid_remove()
 
+        self.problem_btn = ctk.CTkButton(ic, text="Ver o que fazer", height=32, width=130, font=font(12, "bold"),
+            fg_color=ACCENT, hover_color=ACCENT_H, text_color="#ffffff", corner_radius=8,
+            command=self._show_problem)
+        self.problem_btn.grid(row=3, column=0, sticky="w", pady=(12, 0))
+        self.problem_btn.grid_remove()
+
     def _build_options(self, body):
         f = self._card(body, 2)
+        self.options_card = f
         f.grid_columnconfigure((0, 1), weight=1)
         f.grid_columnconfigure(2, weight=2)
 
@@ -340,9 +378,9 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
             corner_radius=12, command=self._history_window).grid(row=0, column=2)
 
     def _build_progress(self, body):
-        pg = self._card(body, 4, pady=(0, 0))
+        pg = self._card(body, 2)
         pg.grid_columnconfigure(0, weight=1)
-        self.progress_card = pg      # só aparece quando há um download (ou o resultado dele)
+        self.progress_card = pg      # ocupa o lugar das opções durante o download e mostra o resultado
 
         ri = ctk.CTkFrame(pg, fg_color="transparent")
         ri.grid(row=0, column=0, sticky="ew", padx=16, pady=(10, 2))
@@ -375,7 +413,17 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         self.proc_pbar = ctk.CTkProgressBar(pg, height=4, corner_radius=2, progress_color=YELLOW,
             fg_color=BORDER, mode="indeterminate", indeterminate_speed=0.8)
         self.proc_pbar.set(0)
-        self.proc_pbar.grid(row=7, column=0, sticky="ew", padx=16, pady=(2, 10))
+        self.proc_pbar.grid(row=7, column=0, sticky="ew", padx=16, pady=(2, 6))
+
+        self.result_row = ctk.CTkFrame(pg, fg_color="transparent")
+        self.result_row.grid(row=8, column=0, sticky="w", padx=16, pady=(4, 12))
+        ctk.CTkButton(self.result_row, text="Abrir pasta", width=110, height=32, font=font(12, "bold"),
+            fg_color=CARD_HI, hover_color=BORDER, text_color=TEXT, corner_radius=8,
+            command=self._open_folder).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(self.result_row, text="Novo download", width=130, height=32, font=font(12),
+            fg_color="transparent", hover_color=CARD_HI, border_width=1, border_color=BORDER, text_color=TEXT,
+            corner_radius=8, command=self._new_download).pack(side="left")
+        self.result_row.grid_remove()
         self.proc_pbar.grid_remove()
         self.proc_lbl.grid_remove()
         self.vid_prog_lbl.grid_remove()   # só aparecem em playlist (veja progress_hooks)
@@ -423,13 +471,34 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
     def _thumb_toggle(self):
         self.thumb_fmt_om.configure(state="normal" if self.thumb_v.get() else "disabled")
 
+    def _show_options(self):
+        self.progress_card.grid_remove()
+        self.options_card.grid()
+
     def _hide_progress_idle(self):
-        """Parado e com link novo: some o card do download anterior."""
+        """Parado e com link novo: volta a mostrar as opções no lugar do resultado anterior."""
         if str(self.dl_btn.cget("state")) != "disabled":
-            self.progress_card.grid_remove()
+            self._show_options()
+        self.problem_btn.grid_remove()
+        self._problem = None
+
+    def _new_download(self):
+        self._show_options()
+        self.url_v.set("")
+
+    def _open_folder(self):
+        folder = self.folder_v.get()
+        if os.path.isdir(folder):
+            os.startfile(folder)
+
+    def _show_problem(self):
+        if self._problem:
+            problem, raw = self._problem
+            ProblemDialog(self, problem, details=short_reason(raw))
 
     def _set_busy(self, on):
         if on:
+            self.options_card.grid_remove()
             self.progress_card.grid()
         self.dl_btn.configure(state="disabled" if on else "normal", text="Baixando…" if on else "Baixar")
         self.cancel_btn.configure(state="normal" if on else "disabled")
@@ -439,85 +508,105 @@ class App(ProgressMixin, PreviewMixin, ctk.CTk):
         url    = self.url_v.get().strip()
         folder = self.folder_v.get().strip()
         if not url:
-            messagebox.showwarning("Aviso", "Insira um link.")
-            self.after(0, lambda: self._set_busy(False))
+            self.after(0, lambda: (messagebox.showwarning("Aviso", "Insira um link."), self._set_busy(False)))
             return
         if not os.path.isdir(folder):
-            messagebox.showwarning("Aviso", "Pasta inválida.")
-            self.after(0, lambda: self._set_busy(False))
+            self.after(0, lambda: (messagebox.showwarning("Aviso", "Essa pasta não existe mais. Escolha outra em \"Salvar em\"."),
+                                   self._set_busy(False)))
             return
 
-        self._stop        = False
-        start_time        = time.time()
-        downloaded_titles = []
+        self._stop = False
+        start_time = time.time()
+        fmt        = self.fmt_v.get()
+        results, failures = [], []          # Result · (nome do vídeo, texto técnico do erro)
         opts = build_opts(
-            folder, self.fmt_v.get(), self.qual_v.get(),
+            folder, fmt, self.qual_v.get(),
             self.mp3_qual_v.get(), self.sub_v.get(),
             self.thumb_v.get(), self.thumb_fmt_v.get(), self._hook,
         )
 
-        try:
-            if selected_entries:
-                self._pl_total = len(selected_entries)
-                self._pl_done  = 0
-                for entry in selected_entries:
-                    if self._stop:
-                        break
-                    vid_url = entry.get("url") or entry.get("webpage_url") or entry.get("id")
-                    if not vid_url:
-                        continue
-                    if not vid_url.startswith("http"):
-                        vid_url = f"https://www.youtube.com/watch?v={vid_url}"
-                    try:
-                        downloaded_titles.append(run_download(opts, vid_url))
-                    except yt_dlp.utils.DownloadCancelled:
-                        break
-                    except Exception:
-                        pass
-            else:
-                downloaded_titles.append(run_download(opts, url))
-
-            elapsed = time.time() - start_time
+        entries = selected_entries or [None]
+        self._pl_total = len(selected_entries) if selected_entries else 0
+        self._pl_done  = 0
+        for entry in entries:
             if self._stop:
-                self.after(0, lambda: (
-                    self.prog_lbl.configure(text="Cancelado", text_color=MUTED),
-                    self.status_lbl.configure(text=""),
-                ))
+                break
+            if entry is None:
+                vid_url, label = url, url
             else:
-                for t in downloaded_titles:
-                    self.history.append({
-                        "url": url, "title": t, "folder": folder,
-                        "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    })
-                save_hist(self.history)
-                n = len(downloaded_titles)
-                self.after(0, lambda: (
-                    self.prog_lbl.configure(
-                        text=f"Concluído  ({n} vídeo{'s' if n!=1 else ''})", text_color=GREEN),
-                    self.status_lbl.configure(text="", text_color=MUTED),
-                    self.proc_pbar.stop(),
-                    self.proc_pbar.grid_remove(),
-                    self.proc_lbl.grid_remove(),
-                ))
-                mins, secs = int(elapsed // 60), int(elapsed % 60)
-                messagebox.showinfo("Pronto",
-                    f"{'Download' if n == 1 else f'{n} downloads'} concluído{'s' if n!=1 else ''} "
-                    f"em {f'{mins}m {secs:02d}s' if mins else f'{secs}s'}!\n"
-                    + (downloaded_titles[0][:70] if n == 1 else f"{n} vídeos baixados"))
+                vid_url = entry.get("url") or entry.get("webpage_url") or entry.get("id")
+                if not vid_url:
+                    continue
+                if not vid_url.startswith("http"):
+                    vid_url = f"https://www.youtube.com/watch?v={vid_url}"
+                label = entry.get("title") or vid_url
+            try:
+                result = run_download(opts, vid_url, fmt)
+                results.append(result)
+                if result.already:                    # nada foi baixado: conta como feito na barra da playlist
+                    self._pl_done += 1
+            except yt_dlp.utils.DownloadCancelled:
+                break
+            except Exception as exc:  # noqa: BLE001 — qualquer falha vira uma explicação, não um travamento
+                failures.append((label, str(exc)))
 
-        except yt_dlp.utils.DownloadCancelled:
-            self.after(0, lambda: (
-                self.prog_lbl.configure(text="Cancelado", text_color=MUTED),
-                self.status_lbl.configure(text=""),
-            ))
-        except yt_dlp.utils.DownloadError as e:
-            if not self._stop:
-                messagebox.showerror("Erro", str(e)[:200])
-                self.after(0, lambda: self.prog_lbl.configure(text="Erro no download", text_color=RED))
-        except Exception as e:
-            messagebox.showerror("Erro inesperado", str(e)[:200])
-        finally:
-            self.after(0, lambda: self._set_busy(False))
+        for r in results:
+            if not r.already:
+                self.history.append({
+                    "url": url, "title": r.title, "folder": folder,
+                    "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                })
+        save_hist(self.history)
+        elapsed, cancelled = time.time() - start_time, self._stop
+        self.after(0, lambda: self._finish(results, failures, elapsed, cancelled))
+
+    def _finish(self, results, failures, elapsed, cancelled):
+        """Mostra o que aconteceu no próprio card (nada de janelinha de 'Pronto')."""
+        self._set_busy(False)
+        self.proc_pbar.stop()
+        for w in (self.proc_pbar, self.proc_lbl, self.vid_prog_lbl, self.vid_pbar):
+            w.grid_remove()
+        self.speed_lbl.configure(text="")
+        self.pl_count_lbl.configure(text="")
+        new = [r for r in results if not r.already]
+        old = [r for r in results if r.already]
+        mins, secs = int(elapsed // 60), int(elapsed % 60)
+        took = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+        plural = lambda n, one, many: f"{n} {one if n == 1 else many}"  # noqa: E731
+
+        if cancelled:
+            self.prog_lbl.configure(text="Cancelado", text_color=MUTED)
+            self.status_lbl.configure(text=f"{plural(len(new), 'vídeo baixado', 'vídeos baixados')} antes de cancelar." if new else "")
+            self.pbar.configure(progress_color=MUTED)
+        elif failures and not results:
+            self.prog_lbl.configure(text="Não foi possível baixar", text_color=RED)
+            self.pbar.configure(progress_color=RED)
+            self.pbar.set(1)
+        elif not new and old:
+            self.prog_lbl.configure(text="Este vídeo já estava baixado" if len(old) == 1 else f"Esses {len(old)} vídeos já estavam baixados", text_color=YELLOW)
+            self.status_lbl.configure(
+                text=f"{os.path.basename(old[0].path)} — já está na pasta, então nada foi baixado de novo. "
+                     "Para baixar outra vez, apague o arquivo da pasta.", text_color=MUTED)
+            self.pbar.configure(progress_color=YELLOW)
+            self.pbar.set(1)
+        else:
+            parts = [plural(len(new), "vídeo baixado", "vídeos baixados")]
+            if old:
+                parts.append(plural(len(old), "já existia", "já existiam"))
+            if failures:
+                parts.append(plural(len(failures), "falhou", "falharam"))
+            self.prog_lbl.configure(text=f"Concluído em {took}", text_color=GREEN if not failures else YELLOW)
+            self.status_lbl.configure(text="  ·  ".join(parts), text_color=MUTED)
+            self.pbar.configure(progress_color=GREEN if not failures else YELLOW)
+            self.pbar.set(1)
+        self.result_row.grid()
+
+        if failures and not cancelled:
+            problem = explain(failures[0][1])
+            extra = None
+            if len(failures) > 1:
+                extra = [f"• {name[:60]} — {explain(raw).title}" for name, raw in failures]
+            ProblemDialog(self, problem, details=short_reason(failures[0][1]), extra=extra, on_retry=self._start)
 
     def _start(self):
         url = self.url_v.get().strip()

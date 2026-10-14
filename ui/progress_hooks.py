@@ -22,6 +22,8 @@ class ProgressMixin:
         self._pl_done       = 0
         self._last_finished = None
         self.prog_lbl.configure(text="Iniciando…", text_color=TEXT)
+        self.pbar.configure(progress_color=TEAL)
+        self.result_row.grid_remove()
         self.vid_prog_lbl.grid_remove()
         self.vid_pbar.grid_remove()
         self.speed_lbl.configure(text="")

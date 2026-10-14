@@ -8,6 +8,8 @@ import customtkinter as ctk
 from PIL import Image
 
 from core.downloader import fetch_info, FFMPEG
+from core.errors     import explain
+from ui.theme        import RED
 from ui.theme        import TEXT, MUTED, DIM
 
 
@@ -25,7 +27,7 @@ class PreviewMixin:
         self.after(0, lambda: (
             self.title_lbl.configure(text="Cole um link para começar", text_color=MUTED),
             self.meta_lbl.configure(text="O título, a duração e o canal aparecem aqui.", text_color=DIM),
-            self.thumb_lbl.configure(image=None, text="▶"),
+            self.thumb_lbl.configure(image=self._blank_img, text="▶"),
             self._pl_banner.grid_remove(),
         ))
         self._img_ref = None
@@ -76,9 +78,14 @@ class PreviewMixin:
             if thumb:
                 self._load_thumbnail(thumb)
 
-        except Exception:
-            self.after(0, lambda: self.title_lbl.configure(
-                text="Não foi possível carregar o preview.", text_color=MUTED))
+        except Exception as exc:  # noqa: BLE001
+            problem = explain(str(exc))
+            self._problem = (problem, str(exc))
+            self.after(0, lambda p=problem: (
+                self.title_lbl.configure(text=p.title, text_color=RED),
+                self.meta_lbl.configure(text="Não deu para carregar as informações deste link.", text_color=MUTED),
+                self.problem_btn.grid(),
+            ))
 
     def _parse_playlist_info(self, info):
         entries  = list(info.get("entries") or [])

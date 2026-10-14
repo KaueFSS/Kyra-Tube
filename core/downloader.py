@@ -2,6 +2,8 @@
 #  core/downloader.py — Lógica de download via yt-dlp
 # ═══════════════════════════════════════════════════════════════
 import os
+from dataclasses import dataclass
+from pathlib import Path
 
 import yt_dlp
 
@@ -20,7 +22,7 @@ def build_opts(folder, fmt, qual, mp3_qual, sub, thumb, thumb_fmt, hook):
         "outtmpl"         : os.path.join(folder, "%(title)s.%(ext)s"),
         "noplaylist"      : True,
         "writethumbnail"  : thumb,
-        "ignoreerrors"    : True,
+        "ignoreerrors"    : False,   # falha de verdade aparece (antes era engolida e virava "baixado em 0s")
         "retries"         : 5,
         "fragment_retries": 10,
         "socket_timeout"  : 30,
@@ -79,11 +81,54 @@ def build_opts(folder, fmt, qual, mp3_qual, sub, thumb, thumb_fmt, hook):
     return o
 
 
-def run_download(opts, url):
-    """Executa o download de um único vídeo. Retorna o título ou a URL."""
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-    return (info.get("title", "") if info else "") or url
+@dataclass(frozen=True)
+class Result:
+    title: str
+    already: bool = False     # True: o arquivo já estava na pasta, nada foi baixado
+    path: str = ""
+
+
+class _Watcher:
+    """Logger do yt-dlp que só repara no que importa (arquivo que já existia)."""
+
+    def __init__(self):
+        self.already = False
+
+    def _look(self, msg):
+        if "has already been downloaded" in str(msg):
+            self.already = True
+
+    debug = info = _look
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        pass
+
+
+def final_path(ydl, info, fmt):
+    """Onde o arquivo vai ficar depois de juntar/converter (a extensão final é a do formato escolhido)."""
+    return Path(ydl.prepare_filename(info)).with_suffix("." + fmt)
+
+
+def run_download(opts, url, fmt="mp4"):
+    """
+    Baixa um único vídeo. Retorna Result; erros do yt-dlp sobem como exceção
+    (a interface os traduz com core.errors.explain).
+    Se o arquivo final já existe na pasta, não baixa de novo: Result(already=True).
+    """
+    watcher = _Watcher()
+    with yt_dlp.YoutubeDL({**opts, "logger": watcher}) as ydl:
+        info = ydl.extract_info(url, download=False)
+        if not info:
+            raise yt_dlp.utils.DownloadError("Video unavailable")
+        title = info.get("title") or url
+        target = final_path(ydl, info, fmt)
+        if target.exists() and target.stat().st_size > 0:
+            return Result(title, already=True, path=str(target))
+        info = ydl.process_ie_result(info, download=True) or info
+    return Result(title, already=watcher.already, path=str(target))
 
 
 def fetch_info(url, ffmpeg):
